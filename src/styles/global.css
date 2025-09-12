@@ -1,0 +1,90 @@
+/* Global Styles for AgriVista */
+
+/* Smooth scrolling behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Common section styling */
+.section {
+  min-height: 100svh;
+  padding-top: 80px; /* Account for fixed header */
+}
+
+/* Footer styling */
+.footer {
+  padding: 60px 0 40px 0;
+  margin-top: 0;
+}
+
+/* Utility classes */
+.line-height-1-6 {
+  line-height: 1.6;
+}
+
+.image-grid {
+  height: 100%;
+}
+
+/* Responsive typography */
+@media (max-width: 960px) {
+  .image-grid .v-col {
+    margin-top: 0 !important;
+  }
+
+  .display-1 {
+    font-size: 2.5rem !important;
+  }
+
+  .text-h4 {
+    font-size: 1.8rem !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .display-1 {
+    font-size: 2rem !important;
+  }
+
+  .text-h4 {
+    font-size: 1.5rem !important;
+  }
+
+  .text-h6 {
+    font-size: 1.1rem !important;
+  }
+}
+
+/* Custom button styles */
+.btn-primary {
+  background-color: #4caf50 !important;
+  color: white !important;
+}
+
+.btn-primary:hover {
+  background-color: #45a049 !important;
+}
+
+/* Common card styles */
+.feature-card {
+  transition: transform 0.2s ease-in-out;
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+}
+
+/* Focus states for accessibility */
+.v-btn:focus-visible {
+  outline: 2px solid #4caf50;
+  outline-offset: 2px;
+}
+
+/* Image optimization */
+.v-img {
+  transition: transform 0.3s ease;
+}
+
+.v-img:hover {
+  transform: scale(1.02);
+}
