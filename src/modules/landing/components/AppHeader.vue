@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 interface NavigationItem {
   title: string
@@ -17,10 +18,12 @@ const emit = defineEmits<{
   navigate: [section: string]
 }>()
 
+const router = useRouter()
+
 const handleNavigation = (item: NavigationItem) => {
   if (item.route) {
-    // For router navigation in the future
-    // router.push(item.route)
+    // For router navigation
+    router.push(item.route)
   } else if (item.id) {
     // For section scrolling
     emit('navigate', item.id)

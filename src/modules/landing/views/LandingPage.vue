@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import AppHeader from '@/components/shared/AppHeader.vue'
-import AppFooter from '@/components/shared/AppFooter.vue'
-import HomeSection from '@/components/landing/HomeSection.vue'
-import AboutSection from '@/components/landing/AboutSection.vue'
-import WhatWeOfferSection from '@/components/landing/WhatWeOfferSection.vue'
+import AppHeader from '../components/AppHeader.vue'
+import AppFooter from '../components/AppFooter.vue'
+import HomeSection from '../components/HomeSection.vue'
+import AboutSection from '../components/AboutSection.vue'
+import WhatWeOfferSection from '../components/WhatWeOfferSection.vue'
 
 const currentSection = ref('home')
 let observer: IntersectionObserver | null = null
@@ -60,7 +60,7 @@ const navigationItems = [
   { title: 'Home', id: 'home' },
   { title: 'About Us', id: 'about' },
   { title: 'What We Offer', id: 'what-we-offer' },
-  { title: 'Login', id: 'login' },
+  { title: 'Login', id: 'login', route: '/login' },
 ]
 </script>
 
