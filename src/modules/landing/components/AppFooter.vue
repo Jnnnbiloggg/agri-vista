@@ -29,7 +29,6 @@ const handleNavigation = (item: NavigationItem) => {
 
 const handleSubscribe = () => {
   if (email.value) {
-    console.log('Subscribing email:', email.value)
     // TODO: Implement newsletter subscription logic
     email.value = ''
   }

@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import HeaderActions from './shared/HeaderActions.vue'
 
 interface Props {
   userType: 'admin' | 'user'
-  userName?: string
-  userEmail?: string
 }
 
-const props = withDefaults(defineProps<Props>(), {
-  userName: 'John Doe',
-  userEmail: 'john@email.com',
-})
+const props = defineProps<Props>()
+
+// Get user info from auth store
+const authStore = useAuthStore()
+const userName = computed(() => authStore.fullName)
+const userEmail = computed(() => authStore.userEmail)
 
 interface Activity {
   id: number
@@ -112,8 +114,8 @@ const adminTab = ref('activities')
 
 // Forms
 const appointmentForm = ref({
-  fullName: props.userName,
-  email: props.userEmail,
+  fullName: userName.value,
+  email: userEmail.value,
   contactNumber: '',
   appointmentType: '',
   date: '',
@@ -165,8 +167,8 @@ const handleRemoveImage = () => {
 // User functions
 const openAppointmentForm = () => {
   appointmentForm.value = {
-    fullName: props.userName,
-    email: props.userEmail,
+    fullName: userName.value,
+    email: userEmail.value,
     contactNumber: '',
     appointmentType: '',
     date: '',
@@ -198,8 +200,8 @@ const confirmBooking = () => {
   const newBooking: Booking = {
     id: Math.max(...bookings.value.map((b) => b.id), 0) + 1,
     activityName: selectedActivity.value.name,
-    userName: props.userName,
-    userEmail: props.userEmail,
+    userName: userName.value,
+    userEmail: userEmail.value,
     bookingDate: new Date().toISOString().split('T')[0],
     status: 'pending',
   }
@@ -367,23 +369,40 @@ const appointmentHeaders = [
   { title: 'Status', key: 'status' },
   { title: 'Actions', key: 'actions' },
 ]
+
+const pageSubtitle = computed(() =>
+  props.userType === 'admin'
+    ? 'Manage farm activities, bookings, and appointments'
+    : 'Explore and book farm activities',
+)
+
+const handleSearch = (query: string) => {
+  console.log('Search query:', query)
+  // Implement your search logic here
+}
+
+const handleSettingsClick = () => {
+  console.log('Settings clicked')
+  // Navigate to settings or open settings dialog
+}
 </script>
 
 <template>
   <div>
     <!-- Page Header -->
     <v-row class="mb-6">
-      <v-col cols="12">
-        <h1 class="text-h4 font-weight-bold text-primary mb-2">
-          {{ userType === 'admin' ? 'Activities & Bookings Management' : 'Farm Activities' }}
-        </h1>
-        <p class="text-h6 text-grey-darken-1">
-          {{
-            userType === 'admin'
-              ? 'Manage farm activities, bookings, and appointments'
-              : 'Explore and book farm activities'
-          }}
-        </p>
+      <v-col cols="12" class="d-flex align-center justify-space-between">
+        <div>
+          <h1 class="text-h4 font-weight-bold text-primary mb-2">
+            {{ userType === 'admin' ? 'Activities & Bookings Management' : 'Farm Activities' }}
+          </h1>
+          <p class="text-h6 text-grey-darken-1">{{ pageSubtitle }}</p>
+        </div>
+        <HeaderActions
+          search-placeholder="Search announcements..."
+          @search="handleSearch"
+          @settings-click="handleSettingsClick"
+        />
       </v-col>
     </v-row>
 

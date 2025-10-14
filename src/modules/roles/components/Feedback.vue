@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import HeaderActions from './shared/HeaderActions.vue'
 
 interface Props {
   userType: 'admin' | 'user'
-  // These should be passed from auth
-  userName?: string
-  userProfilePic?: string
 }
 
-const props = withDefaults(defineProps<Props>(), {
-  userName: 'John Doe',
-  userProfilePic: 'https://i.pravatar.cc/150?img=12',
-})
+const props = defineProps<Props>()
+
+// Get user info from auth store
+const authStore = useAuthStore()
+const userName = computed(() => authStore.fullName)
+const userProfilePic = computed(() => 'https://i.pravatar.cc/150?img=12')
 
 interface Feedback {
   id: number
@@ -27,7 +28,6 @@ interface Feedback {
   isPublic: boolean
 }
 
-// Sample feedback data
 const feedbacks = ref<Feedback[]>([
   {
     id: 1,
@@ -70,7 +70,9 @@ const feedbacks = ref<Feedback[]>([
   },
 ])
 
-// User feedback form
+const showFeedbackDialog = ref(false)
+const showSuccessDialog = ref(false)
+
 const feedbackForm = ref({
   profession: '',
   feedbackType: 'general' as 'general' | 'product',
@@ -79,8 +81,6 @@ const feedbackForm = ref({
   rating: 5,
   isPublic: true,
 })
-
-const showSuccessDialog = ref(false)
 
 const professions = [
   { title: 'Professor', value: 'professor' },
@@ -103,7 +103,6 @@ const products = [
 const timeRange = ref<'weekly' | 'monthly' | 'yearly'>('monthly')
 const selectedProduct = ref('strawberry')
 
-// Calculate ratings data
 const calculateRatings = (type: 'general' | 'product', productName?: string) => {
   const filtered = feedbacks.value.filter((f) => {
     if (type === 'general') return f.feedbackType === 'general' && f.status === 'approved'
@@ -123,17 +122,28 @@ const calculateRatings = (type: 'general' | 'product', productName?: string) => 
 const generalRatings = computed(() => calculateRatings('general'))
 const productRatings = computed(() => calculateRatings('product', selectedProduct.value))
 
-// Published feedback for both users and admins
 const publishedFeedback = computed(() =>
   feedbacks.value.filter((f) => f.status === 'approved' && f.isPublic),
 )
 
 // User functions
+const openFeedbackDialog = () => {
+  feedbackForm.value = {
+    profession: '',
+    feedbackType: 'general',
+    product: '',
+    message: '',
+    rating: 5,
+    isPublic: true,
+  }
+  showFeedbackDialog.value = true
+}
+
 const handleSubmitFeedback = () => {
   const newFeedback: Feedback = {
     id: Math.max(...feedbacks.value.map((f) => f.id), 0) + 1,
-    name: props.userName,
-    profilePic: props.userProfilePic,
+    name: userName.value,
+    profilePic: userProfilePic.value,
     profession: feedbackForm.value.profession,
     feedbackType: feedbackForm.value.feedbackType,
     product: feedbackForm.value.feedbackType === 'product' ? feedbackForm.value.product : undefined,
@@ -145,17 +155,8 @@ const handleSubmitFeedback = () => {
   }
 
   feedbacks.value.unshift(newFeedback)
+  showFeedbackDialog.value = false
   showSuccessDialog.value = true
-
-  // Reset form
-  feedbackForm.value = {
-    profession: '',
-    feedbackType: 'general',
-    product: '',
-    message: '',
-    rating: 5,
-    isPublic: true,
-  }
 }
 
 // Admin functions
@@ -209,23 +210,43 @@ const getStatusColor = (status: string) => {
 }
 
 const pageTitle = computed(() =>
-  props.userType === 'admin' ? 'Feedback/Testimonial & Other Ratings' : 'Share Your Feedback',
+  props.userType === 'admin'
+    ? 'Feedback/Testimonial & Other Ratings'
+    : 'Community Feedback & Testimonials',
 )
+
+const handleSearch = (query: string) => {
+  console.log('Search query:', query)
+  // Implement your search logic here
+}
+
+const handleSettingsClick = () => {
+  console.log('Settings clicked')
+  // Navigate to settings or open settings dialog
+}
 </script>
 
 <template>
   <div>
     <!-- Page Header -->
     <v-row class="mb-6">
-      <v-col cols="12">
-        <h1 class="text-h4 font-weight-bold text-primary mb-2">{{ pageTitle }}</h1>
-        <p class="text-h6 text-grey-darken-1">
-          {{
-            userType === 'admin'
-              ? 'Manage feedback and track ratings'
-              : 'Help us improve by sharing your experience'
-          }}
-        </p>
+      <v-col cols="12" class="d-flex align-center justify-space-between">
+        <div>
+          <h1 class="text-h4 font-weight-bold text-primary mb-2">{{ pageTitle }}</h1>
+          <p class="text-h6 text-grey-darken-1">
+            {{
+              userType === 'admin'
+                ? 'Manage feedback and track ratings'
+                : 'View testimonials and share your experience'
+            }}
+          </p>
+        </div>
+
+        <HeaderActions
+          search-placeholder="Search feedback..."
+          @search="handleSearch"
+          @settings-click="handleSettingsClick"
+        />
       </v-col>
     </v-row>
 
@@ -485,171 +506,26 @@ const pageTitle = computed(() =>
       </v-row>
     </template>
 
-    <!-- User View: Feedback Form -->
-    <v-row v-if="userType === 'user'">
-      <v-col cols="12" lg="7">
-        <v-card>
-          <v-card-title class="text-h5">
-            <v-icon icon="mdi-comment-edit" class="mr-2"></v-icon>
-            Submit Your Feedback
-          </v-card-title>
-
-          <v-card-text>
-            <v-form @submit.prevent="handleSubmitFeedback">
-              <v-row>
-                <!-- User Info Display -->
-                <v-col cols="12">
-                  <div class="d-flex align-center pa-4 bg-grey-lighten-4 rounded">
-                    <v-avatar size="60" class="mr-4">
-                      <v-img :src="userProfilePic"></v-img>
-                    </v-avatar>
-                    <div>
-                      <div class="text-h6 font-weight-bold">{{ userName }}</div>
-                      <div class="text-caption text-grey-darken-1">Submitting as</div>
-                    </div>
-                  </div>
-                </v-col>
-
-                <v-col cols="12">
-                  <v-select
-                    v-model="feedbackForm.profession"
-                    label="Profession/Role *"
-                    :items="professions"
-                    variant="outlined"
-                    required
-                  ></v-select>
-                </v-col>
-
-                <v-col cols="12">
-                  <v-radio-group v-model="feedbackForm.feedbackType" inline>
-                    <v-radio label="General Feedback/Testimonial" value="general"></v-radio>
-                    <v-radio label="Product Feedback" value="product"></v-radio>
-                  </v-radio-group>
-                </v-col>
-
-                <v-col v-if="feedbackForm.feedbackType === 'product'" cols="12">
-                  <v-select
-                    v-model="feedbackForm.product"
-                    label="Select Product *"
-                    :items="products"
-                    variant="outlined"
-                    required
-                  ></v-select>
-                </v-col>
-
-                <v-col cols="12">
-                  <v-textarea
-                    v-model="feedbackForm.message"
-                    label="Your Feedback *"
-                    variant="outlined"
-                    rows="6"
-                    required
-                    placeholder="Share your thoughts, suggestions, or experience..."
-                  ></v-textarea>
-                </v-col>
-
-                <v-col cols="12">
-                  <div class="mb-2">
-                    <label class="text-body-1 font-weight-medium">Rating *</label>
-                  </div>
-                  <v-rating
-                    v-model="feedbackForm.rating"
-                    :length="5"
-                    color="warning"
-                    active-color="warning"
-                    size="x-large"
-                    hover
-                  ></v-rating>
-                </v-col>
-
-                <v-col cols="12">
-                  <v-checkbox
-                    v-model="feedbackForm.isPublic"
-                    label="Allow this feedback to be displayed publicly"
-                    hide-details
-                  ></v-checkbox>
-                </v-col>
-              </v-row>
-
-              <v-btn
-                type="submit"
-                color="primary"
-                variant="elevated"
-                block
-                size="large"
-                prepend-icon="mdi-send"
-                class="mt-4"
-              >
-                Submit Feedback
-              </v-btn>
-            </v-form>
-          </v-card-text>
-        </v-card>
-      </v-col>
-
-      <!-- Published Testimonials Sidebar -->
-      <v-col cols="12" lg="5">
-        <v-card sticky style="top: 24px">
-          <v-card-title>Recent Testimonials</v-card-title>
-          <v-card-text style="max-height: 600px; overflow-y: auto">
-            <div v-if="publishedFeedback.length === 0" class="text-center text-grey-darken-1 pa-4">
-              No testimonials yet. Be the first!
-            </div>
-            <div v-else>
-              <v-card
-                v-for="feedback in publishedFeedback"
-                :key="feedback.id"
-                variant="tonal"
-                class="mb-4"
-              >
-                <v-card-text>
-                  <div class="d-flex align-center mb-3">
-                    <v-avatar size="40" class="mr-3">
-                      <v-img :src="feedback.profilePic"></v-img>
-                    </v-avatar>
-                    <div class="flex-grow-1">
-                      <div class="font-weight-bold">{{ feedback.name }}</div>
-                      <div class="text-caption text-grey-darken-1">{{ feedback.profession }}</div>
-                    </div>
-                    <v-chip
-                      :color="feedback.feedbackType === 'general' ? 'primary' : 'success'"
-                      size="x-small"
-                      variant="tonal"
-                    >
-                      {{ feedback.feedbackType }}
-                    </v-chip>
-                  </div>
-
-                  <v-rating
-                    :model-value="feedback.rating"
-                    :length="5"
-                    color="warning"
-                    size="small"
-                    readonly
-                    class="mb-2"
-                  ></v-rating>
-
-                  <p class="text-body-2 mb-2">{{ feedback.message }}</p>
-
-                  <div v-if="feedback.product" class="text-caption text-grey-darken-1">
-                    <v-icon icon="mdi-tag" size="12"></v-icon> {{ feedback.product }}
-                  </div>
-                </v-card-text>
-              </v-card>
-            </div>
-          </v-card-text>
-        </v-card>
-      </v-col>
-    </v-row>
-
-    <!-- Both Views: Published Feedback Section -->
-    <v-row class="mt-6">
+    <!-- Published Feedback Section (Both Views) -->
+    <v-row :class="userType === 'admin' ? 'mt-6' : ''">
       <v-col cols="12">
         <v-card>
-          <v-card-title>
-            <v-icon icon="mdi-forum" class="mr-2"></v-icon>
-            Community Feedback & Testimonials
-          </v-card-title>
+          <v-col cols="12" class="d-flex align-center justify-space-between">
+            <v-card-title>
+              <v-icon icon="mdi-forum" class="mr-2"></v-icon>
+              Community Feedback & Testimonials
+            </v-card-title>
+
+            <v-btn
+              v-if="userType === 'user'"
+              color="primary"
+              variant="elevated"
+              prepend-icon="mdi-plus"
+              @click="openFeedbackDialog"
+            >
+              Submit Feedback
+            </v-btn>
+          </v-col>
           <v-card-text>
             <v-row>
               <v-col
@@ -707,6 +583,107 @@ const pageTitle = computed(() =>
         </v-card>
       </v-col>
     </v-row>
+
+    <!-- User Feedback Dialog -->
+    <v-dialog v-if="userType === 'user'" v-model="showFeedbackDialog" max-width="700px" persistent>
+      <v-card>
+        <v-card-title>
+          <v-icon icon="mdi-comment-edit" class="mr-2"></v-icon>
+          Submit Your Feedback
+        </v-card-title>
+        <v-card-text>
+          <v-form @submit.prevent="handleSubmitFeedback">
+            <v-row>
+              <!-- User Info Display -->
+              <v-col cols="12">
+                <div class="d-flex align-center pa-4 bg-grey-lighten-4 rounded">
+                  <v-avatar size="50" class="mr-3">
+                    <v-img :src="userProfilePic"></v-img>
+                  </v-avatar>
+                  <div>
+                    <div class="text-h6 font-weight-bold">{{ userName }}</div>
+                    <div class="text-caption text-grey-darken-1">Submitting as</div>
+                  </div>
+                </div>
+              </v-col>
+
+              <v-col cols="12">
+                <v-select
+                  v-model="feedbackForm.profession"
+                  label="Profession/Role *"
+                  :items="professions"
+                  variant="outlined"
+                  required
+                ></v-select>
+              </v-col>
+
+              <v-col cols="12">
+                <v-radio-group v-model="feedbackForm.feedbackType" inline>
+                  <v-radio label="General Feedback/Testimonial" value="general"></v-radio>
+                  <v-radio label="Product Feedback" value="product"></v-radio>
+                </v-radio-group>
+              </v-col>
+
+              <v-col v-if="feedbackForm.feedbackType === 'product'" cols="12">
+                <v-select
+                  v-model="feedbackForm.product"
+                  label="Select Product *"
+                  :items="products"
+                  variant="outlined"
+                  required
+                ></v-select>
+              </v-col>
+
+              <v-col cols="12">
+                <v-textarea
+                  v-model="feedbackForm.message"
+                  label="Your Feedback *"
+                  variant="outlined"
+                  rows="5"
+                  required
+                  placeholder="Share your thoughts, suggestions, or experience..."
+                ></v-textarea>
+              </v-col>
+
+              <v-col cols="12">
+                <div class="mb-2">
+                  <label class="text-body-1 font-weight-medium">Rating *</label>
+                </div>
+                <v-rating
+                  v-model="feedbackForm.rating"
+                  :length="5"
+                  color="warning"
+                  active-color="warning"
+                  size="large"
+                  hover
+                ></v-rating>
+              </v-col>
+
+              <v-col cols="12">
+                <v-checkbox
+                  v-model="feedbackForm.isPublic"
+                  label="Allow this feedback to be displayed publicly"
+                  hide-details
+                ></v-checkbox>
+              </v-col>
+            </v-row>
+          </v-form>
+        </v-card-text>
+
+        <v-card-actions class="px-6 pb-6">
+          <v-spacer></v-spacer>
+          <v-btn variant="outlined" @click="showFeedbackDialog = false">Cancel</v-btn>
+          <v-btn
+            color="primary"
+            variant="elevated"
+            prepend-icon="mdi-send"
+            @click="handleSubmitFeedback"
+          >
+            Submit Feedback
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- Success Dialog -->
     <v-dialog v-model="showSuccessDialog" max-width="400px">

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import HeaderActions from './shared/HeaderActions.vue'
 
 interface Props {
   userType: 'admin' | 'user'
@@ -267,6 +268,22 @@ const productHeaders = [
   { title: 'Stock', key: 'stock' },
   { title: 'Actions', key: 'actions' },
 ]
+
+const pageSubtitle = computed(() =>
+  props.userType === 'admin'
+    ? 'Manage products and orders'
+    : 'Browse and reserve fresh farm products',
+)
+
+const handleSearch = (query: string) => {
+  console.log('Search query:', query)
+  // Implement your search logic here
+}
+
+const handleSettingsClick = () => {
+  console.log('Settings clicked')
+  // Navigate to settings or open settings dialog
+}
 </script>
 
 <template>
@@ -279,13 +296,15 @@ const productHeaders = [
             {{ userType === 'admin' ? 'Product Management' : 'Farm Products' }}
           </h1>
           <p class="text-h6 text-grey-darken-1">
-            {{
-              userType === 'admin'
-                ? 'Manage products and orders'
-                : 'Browse and reserve fresh farm products'
-            }}
+            {{ pageSubtitle }}
           </p>
         </div>
+
+        <HeaderActions
+          search-placeholder="Search products..."
+          @search="handleSearch"
+          @settings-click="handleSettingsClick"
+        />
       </v-col>
     </v-row>
 
