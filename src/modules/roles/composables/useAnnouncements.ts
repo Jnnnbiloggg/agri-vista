@@ -45,7 +45,9 @@ export const useAnnouncements = () => {
   /**
    * Fetch announcements with pagination and search
    */
-  const fetchAnnouncements = async (options?: Partial<PaginationOptions>) => {
+  const fetchAnnouncements = async (
+    options?: Partial<PaginationOptions> & { append?: boolean },
+  ) => {
     loading.value = true
     error.value = null
 
@@ -80,13 +82,28 @@ export const useAnnouncements = () => {
 
       if (fetchError) throw fetchError
 
-      announcements.value = data || []
+      // Append or replace data based on options
+      if (options?.append) {
+        announcements.value = [...announcements.value, ...(data || [])]
+      } else {
+        announcements.value = data || []
+      }
       totalCount.value = count || 0
     } catch (err: any) {
       error.value = err.message
       console.error('Error fetching announcements:', err)
     } finally {
       loading.value = false
+    }
+  }
+
+  /**
+   * Load more announcements for infinite scroll
+   */
+  const loadMoreAnnouncements = async () => {
+    if (currentPage.value < totalPages.value) {
+      currentPage.value += 1
+      await fetchAnnouncements({ append: true })
     }
   }
 
@@ -402,6 +419,7 @@ export const useAnnouncements = () => {
 
     // Methods
     fetchAnnouncements,
+    loadMoreAnnouncements,
     searchAnnouncements,
     clearSearch,
     goToPage,

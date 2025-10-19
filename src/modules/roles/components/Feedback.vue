@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedback } from '../composables/useFeedback'
+import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import HeaderActions from './shared/HeaderActions.vue'
 
 interface Props {
@@ -25,6 +26,7 @@ const {
   itemsPerPage,
   feedbacksTotalPages,
   fetchFeedbacks,
+  loadMoreFeedbacks,
   searchFeedbacks,
   clearFeedbacksSearch,
   createFeedback,
@@ -34,6 +36,16 @@ const {
   setupRealtimeSubscription,
   cleanupRealtimeSubscription,
 } = useFeedback()
+
+// Infinite scroll for published feedback cards
+const { isLoading: isLoadingMore } = useInfiniteScroll({
+  onLoadMore: async () => {
+    if (!loading.value && publishedFeedback.value.length > 0) {
+      await loadMoreFeedbacks()
+    }
+  },
+  hasMore: () => feedbacksPage.value < feedbacksTotalPages.value,
+})
 
 // Dialog states
 const showFeedbackDialog = ref(false)
@@ -215,7 +227,11 @@ const pageSubtitle = computed(() =>
 )
 
 const handleSearch = async (query: string) => {
-  await searchFeedbacks(query)
+  if (query) {
+    await searchFeedbacks(query)
+  } else {
+    await clearFeedbacksSearch()
+  }
 }
 
 const handleClearSearch = async () => {
@@ -256,373 +272,402 @@ const handleSettingsClick = () => {
 
     <!-- Content -->
     <template v-else>
+      <!-- Admin View: Analytics Cards -->
+      <template v-if="userType === 'admin'">
+        <v-row class="mb-6">
+          <v-col cols="12" class="d-flex justify-end mb-2">
+            <v-btn-toggle v-model="timeRange" color="primary" variant="outlined" mandatory>
+              <v-btn value="weekly">Weekly</v-btn>
+              <v-btn value="monthly">Monthly</v-btn>
+              <v-btn value="yearly">Yearly</v-btn>
+            </v-btn-toggle>
+          </v-col>
 
-    <!-- Admin View: Analytics Cards -->
-    <template v-if="userType === 'admin'">
-      <v-row class="mb-6">
-        <v-col cols="12" class="d-flex justify-end mb-2">
-          <v-btn-toggle v-model="timeRange" color="primary" variant="outlined" mandatory>
-            <v-btn value="weekly">Weekly</v-btn>
-            <v-btn value="monthly">Monthly</v-btn>
-            <v-btn value="yearly">Yearly</v-btn>
-          </v-btn-toggle>
-        </v-col>
-
-        <!-- General Ratings Card -->
-        <v-col cols="12" md="6">
-          <v-card>
-            <v-card-title class="d-flex align-center">
-              <v-icon icon="mdi-chart-bar" class="mr-2"></v-icon>
-              General Feedback Track
-            </v-card-title>
-            <v-card-text>
-              <div class="mb-4">
-                <div class="d-flex justify-space-between mb-2">
-                  <span class="text-body-2">Positive (4-5 stars)</span>
-                  <span class="font-weight-bold text-success">{{ generalRatings.positive }}</span>
+          <!-- General Ratings Card -->
+          <v-col cols="12" md="6">
+            <v-card>
+              <v-card-title class="d-flex align-center">
+                <v-icon icon="mdi-chart-bar" class="mr-2"></v-icon>
+                General Feedback Track
+              </v-card-title>
+              <v-card-text>
+                <div class="mb-4">
+                  <div class="d-flex justify-space-between mb-2">
+                    <span class="text-body-2">Positive (4-5 stars)</span>
+                    <span class="font-weight-bold text-success">{{ generalRatings.positive }}</span>
+                  </div>
+                  <v-progress-linear
+                    :model-value="
+                      generalRatings.total
+                        ? (generalRatings.positive / generalRatings.total) * 100
+                        : 0
+                    "
+                    color="success"
+                    height="24"
+                    rounded
+                  >
+                    <template v-slot:default>
+                      <strong
+                        >{{
+                          generalRatings.total
+                            ? Math.round((generalRatings.positive / generalRatings.total) * 100)
+                            : 0
+                        }}%</strong
+                      >
+                    </template>
+                  </v-progress-linear>
                 </div>
-                <v-progress-linear
-                  :model-value="
-                    generalRatings.total
-                      ? (generalRatings.positive / generalRatings.total) * 100
-                      : 0
-                  "
-                  color="success"
-                  height="24"
-                  rounded
-                >
-                  <template v-slot:default>
-                    <strong
-                      >{{
-                        generalRatings.total
-                          ? Math.round((generalRatings.positive / generalRatings.total) * 100)
-                          : 0
-                      }}%</strong
-                    >
-                  </template>
-                </v-progress-linear>
-              </div>
 
-              <div>
-                <div class="d-flex justify-space-between mb-2">
-                  <span class="text-body-2">Negative (1-3 stars)</span>
-                  <span class="font-weight-bold text-error">{{ generalRatings.negative }}</span>
+                <div>
+                  <div class="d-flex justify-space-between mb-2">
+                    <span class="text-body-2">Negative (1-3 stars)</span>
+                    <span class="font-weight-bold text-error">{{ generalRatings.negative }}</span>
+                  </div>
+                  <v-progress-linear
+                    :model-value="
+                      generalRatings.total
+                        ? (generalRatings.negative / generalRatings.total) * 100
+                        : 0
+                    "
+                    color="error"
+                    height="24"
+                    rounded
+                  >
+                    <template v-slot:default>
+                      <strong
+                        >{{
+                          generalRatings.total
+                            ? Math.round((generalRatings.negative / generalRatings.total) * 100)
+                            : 0
+                        }}%</strong
+                      >
+                    </template>
+                  </v-progress-linear>
                 </div>
-                <v-progress-linear
-                  :model-value="
-                    generalRatings.total
-                      ? (generalRatings.negative / generalRatings.total) * 100
-                      : 0
-                  "
-                  color="error"
-                  height="24"
-                  rounded
-                >
-                  <template v-slot:default>
-                    <strong
-                      >{{
-                        generalRatings.total
-                          ? Math.round((generalRatings.negative / generalRatings.total) * 100)
-                          : 0
-                      }}%</strong
-                    >
-                  </template>
-                </v-progress-linear>
-              </div>
 
-              <v-divider class="my-4"></v-divider>
-              <div class="text-center">
-                <div class="text-h4 font-weight-bold">{{ generalRatings.total }}</div>
-                <div class="text-caption text-grey-darken-1">Total Feedback</div>
-              </div>
-            </v-card-text>
-          </v-card>
-        </v-col>
-
-        <!-- Product Ratings Card -->
-        <v-col cols="12" md="6">
-          <v-card>
-            <v-card-title class="d-flex align-center justify-space-between">
-              <div>
-                <v-icon icon="mdi-package-variant" class="mr-2"></v-icon>
-                Product Feedback Track
-              </div>
-              <v-select
-                v-model="selectedProduct"
-                :items="products"
-                variant="outlined"
-                density="compact"
-                hide-details
-                style="max-width: 200px"
-              ></v-select>
-            </v-card-title>
-            <v-card-text>
-              <div class="mb-4">
-                <div class="d-flex justify-space-between mb-2">
-                  <span class="text-body-2">Positive (4-5 stars)</span>
-                  <span class="font-weight-bold text-success">{{ productRatings.positive }}</span>
+                <v-divider class="my-4"></v-divider>
+                <div class="text-center">
+                  <div class="text-h4 font-weight-bold">{{ generalRatings.total }}</div>
+                  <div class="text-caption text-grey-darken-1">Total Feedback</div>
                 </div>
-                <v-progress-linear
-                  :model-value="
-                    productRatings.total
-                      ? (productRatings.positive / productRatings.total) * 100
-                      : 0
-                  "
-                  color="success"
-                  height="24"
-                  rounded
-                >
-                  <template v-slot:default>
-                    <strong
-                      >{{
-                        productRatings.total
-                          ? Math.round((productRatings.positive / productRatings.total) * 100)
-                          : 0
-                      }}%</strong
-                    >
-                  </template>
-                </v-progress-linear>
-              </div>
+              </v-card-text>
+            </v-card>
+          </v-col>
 
-              <div>
-                <div class="d-flex justify-space-between mb-2">
-                  <span class="text-body-2">Negative (1-3 stars)</span>
-                  <span class="font-weight-bold text-error">{{ productRatings.negative }}</span>
+          <!-- Product Ratings Card -->
+          <v-col cols="12" md="6">
+            <v-card>
+              <v-card-title class="d-flex align-center justify-space-between">
+                <div>
+                  <v-icon icon="mdi-package-variant" class="mr-2"></v-icon>
+                  Product Feedback Track
                 </div>
-                <v-progress-linear
-                  :model-value="
-                    productRatings.total
-                      ? (productRatings.negative / productRatings.total) * 100
-                      : 0
-                  "
-                  color="error"
-                  height="24"
-                  rounded
+                <v-select
+                  v-model="selectedProduct"
+                  :items="products"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  style="max-width: 200px"
+                ></v-select>
+              </v-card-title>
+              <v-card-text>
+                <div class="mb-4">
+                  <div class="d-flex justify-space-between mb-2">
+                    <span class="text-body-2">Positive (4-5 stars)</span>
+                    <span class="font-weight-bold text-success">{{ productRatings.positive }}</span>
+                  </div>
+                  <v-progress-linear
+                    :model-value="
+                      productRatings.total
+                        ? (productRatings.positive / productRatings.total) * 100
+                        : 0
+                    "
+                    color="success"
+                    height="24"
+                    rounded
+                  >
+                    <template v-slot:default>
+                      <strong
+                        >{{
+                          productRatings.total
+                            ? Math.round((productRatings.positive / productRatings.total) * 100)
+                            : 0
+                        }}%</strong
+                      >
+                    </template>
+                  </v-progress-linear>
+                </div>
+
+                <div>
+                  <div class="d-flex justify-space-between mb-2">
+                    <span class="text-body-2">Negative (1-3 stars)</span>
+                    <span class="font-weight-bold text-error">{{ productRatings.negative }}</span>
+                  </div>
+                  <v-progress-linear
+                    :model-value="
+                      productRatings.total
+                        ? (productRatings.negative / productRatings.total) * 100
+                        : 0
+                    "
+                    color="error"
+                    height="24"
+                    rounded
+                  >
+                    <template v-slot:default>
+                      <strong
+                        >{{
+                          productRatings.total
+                            ? Math.round((productRatings.negative / productRatings.total) * 100)
+                            : 0
+                        }}%</strong
+                      >
+                    </template>
+                  </v-progress-linear>
+                </div>
+
+                <v-divider class="my-4"></v-divider>
+                <div class="text-center">
+                  <div class="text-h4 font-weight-bold">{{ productRatings.total }}</div>
+                  <div class="text-caption text-grey-darken-1">Total Feedback</div>
+                </div>
+              </v-card-text>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <!-- Admin Feedback Management Table -->
+        <v-row>
+          <v-col cols="12">
+            <v-card>
+              <v-card-title>All Feedback Submissions</v-card-title>
+              <v-card-text>
+                <!-- Empty State for Admin -->
+                <div v-if="feedbacks.length === 0" class="text-center py-12">
+                  <v-icon icon="mdi-comment-off-outline" size="64" color="grey"></v-icon>
+                  <p class="text-h6 text-grey-darken-1 mt-4">No feedback submissions yet</p>
+                  <p class="text-body-2 text-grey">
+                    Feedback from users will appear here once submitted
+                  </p>
+                </div>
+
+                <v-data-table
+                  v-else
+                  :headers="adminTableHeaders"
+                  :items="feedbacks"
+                  item-value="id"
+                  :loading="loading"
                 >
-                  <template v-slot:default>
-                    <strong
-                      >{{
-                        productRatings.total
-                          ? Math.round((productRatings.negative / productRatings.total) * 100)
-                          : 0
-                      }}%</strong
-                    >
+                  <template v-slot:item.user_name="{ item }">
+                    <div class="d-flex align-center">
+                      <v-avatar size="40" class="mr-3">
+                        <v-img
+                          :src="item.profile_pic || 'https://i.pravatar.cc/150?img=12'"
+                        ></v-img>
+                      </v-avatar>
+                      <div>
+                        <div class="font-weight-medium">{{ item.user_name }}</div>
+                        <div class="text-caption text-grey-darken-1">{{ item.profession }}</div>
+                      </div>
+                    </div>
                   </template>
-                </v-progress-linear>
-              </div>
 
-              <v-divider class="my-4"></v-divider>
-              <div class="text-center">
-                <div class="text-h4 font-weight-bold">{{ productRatings.total }}</div>
-                <div class="text-caption text-grey-darken-1">Total Feedback</div>
-              </div>
-            </v-card-text>
-          </v-card>
-        </v-col>
-      </v-row>
+                  <template v-slot:item.feedback_type="{ item }">
+                    <v-chip
+                      :color="item.feedback_type === 'general' ? 'primary' : 'success'"
+                      size="small"
+                      variant="tonal"
+                    >
+                      {{ item.feedback_type }}
+                      <span v-if="item.product"> - {{ item.product }}</span>
+                    </v-chip>
+                  </template>
 
-      <!-- Admin Feedback Management Table -->
-      <v-row>
+                  <template v-slot:item.rating="{ item }">
+                    <v-rating
+                      :model-value="item.rating"
+                      :length="5"
+                      color="warning"
+                      size="small"
+                      readonly
+                    ></v-rating>
+                  </template>
+
+                  <template v-slot:item.status="{ item }">
+                    <v-chip :color="getStatusColor(item.status)" size="small" variant="tonal">
+                      {{ item.status }}
+                    </v-chip>
+                  </template>
+
+                  <template v-slot:item.is_public="{ item }">
+                    <v-switch
+                      :model-value="item.is_public"
+                      @update:model-value="handleTogglePublicStatus(item.id, item.is_public)"
+                      hide-details
+                      density="compact"
+                    ></v-switch>
+                  </template>
+
+                  <template v-slot:item.actions="{ item }">
+                    <v-menu>
+                      <template v-slot:activator="{ props: menuProps }">
+                        <v-btn
+                          icon="mdi-dots-vertical"
+                          size="small"
+                          variant="text"
+                          v-bind="menuProps"
+                        ></v-btn>
+                      </template>
+                      <v-list>
+                        <v-list-item
+                          title="Approve"
+                          prepend-icon="mdi-check"
+                          @click="handleUpdateFeedbackStatus(item.id, 'approved')"
+                        ></v-list-item>
+                        <v-list-item
+                          title="Reject"
+                          prepend-icon="mdi-cancel"
+                          @click="handleUpdateFeedbackStatus(item.id, 'rejected')"
+                        ></v-list-item>
+                        <v-divider></v-divider>
+                        <v-list-item
+                          title="Delete"
+                          prepend-icon="mdi-delete"
+                          @click="confirmDeleteFeedback(item.id)"
+                        ></v-list-item>
+                      </v-list>
+                    </v-menu>
+                  </template>
+                </v-data-table>
+              </v-card-text>
+            </v-card>
+          </v-col>
+        </v-row>
+      </template>
+
+      <!-- Published Feedback Section (Both Views) -->
+      <v-row :class="userType === 'admin' ? 'mt-6' : ''">
         <v-col cols="12">
           <v-card>
-            <v-card-title>All Feedback Submissions</v-card-title>
+            <v-col cols="12" class="d-flex align-center justify-space-between">
+              <v-card-title>
+                <v-icon icon="mdi-forum" class="mr-2"></v-icon>
+                Community Feedback & Testimonials
+              </v-card-title>
+
+              <v-btn
+                v-if="userType === 'user'"
+                color="primary"
+                variant="elevated"
+                prepend-icon="mdi-plus"
+                @click="openFeedbackDialog"
+              >
+                Submit Feedback
+              </v-btn>
+            </v-col>
             <v-card-text>
-              <!-- Empty State for Admin -->
-              <div v-if="feedbacks.length === 0" class="text-center py-12">
+              <!-- Empty State for Published Feedback -->
+              <div v-if="publishedFeedback.length === 0" class="text-center py-12">
                 <v-icon icon="mdi-comment-off-outline" size="64" color="grey"></v-icon>
-                <p class="text-h6 text-grey-darken-1 mt-4">No feedback submissions yet</p>
+                <p class="text-h6 text-grey-darken-1 mt-4">No published feedback yet</p>
                 <p class="text-body-2 text-grey">
-                  Feedback from users will appear here once submitted
+                  {{
+                    userType === 'user'
+                      ? 'Be the first to share your experience!'
+                      : 'Approved public feedback will appear here'
+                  }}
                 </p>
               </div>
 
-              <v-data-table
-                v-else
-                :headers="adminTableHeaders"
-                :items="feedbacks"
-                item-value="id"
-                :loading="loading"
+              <v-row v-else>
+                <v-col
+                  v-for="feedback in publishedFeedback"
+                  :key="feedback.id"
+                  cols="12"
+                  md="6"
+                  lg="4"
+                >
+                  <v-card variant="outlined" height="100%">
+                    <v-card-text>
+                      <div class="d-flex align-center mb-3">
+                        <v-avatar size="50" class="mr-3">
+                          <v-img
+                            :src="feedback.profile_pic || 'https://i.pravatar.cc/150?img=12'"
+                          ></v-img>
+                        </v-avatar>
+                        <div class="flex-grow-1">
+                          <div class="font-weight-bold text-h6">{{ feedback.user_name }}</div>
+                          <div class="text-caption text-grey-darken-1">
+                            {{ feedback.profession }}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="d-flex align-center justify-space-between mb-3">
+                        <v-rating
+                          :model-value="feedback.rating"
+                          :length="5"
+                          color="warning"
+                          size="small"
+                          readonly
+                        ></v-rating>
+                        <v-chip
+                          :color="feedback.feedback_type === 'general' ? 'primary' : 'success'"
+                          size="small"
+                          variant="tonal"
+                        >
+                          {{ feedback.feedback_type }}
+                        </v-chip>
+                      </div>
+
+                      <p class="text-body-2 mb-3">{{ feedback.message }}</p>
+
+                      <v-divider class="mb-2"></v-divider>
+                      <div
+                        class="d-flex align-center justify-space-between text-caption text-grey-darken-1"
+                      >
+                        <span>{{ new Date(feedback.created_at).toLocaleDateString() }}</span>
+                        <span v-if="feedback.product">
+                          <v-icon icon="mdi-tag" size="12"></v-icon> {{ feedback.product }}
+                        </span>
+                      </div>
+                    </v-card-text>
+                  </v-card>
+                </v-col>
+              </v-row>
+
+              <!-- Loading More Indicator -->
+              <v-row v-if="isLoadingMore && publishedFeedback.length > 0" class="mt-4">
+                <v-col cols="12" class="text-center">
+                  <v-progress-circular
+                    indeterminate
+                    color="primary"
+                    size="48"
+                  ></v-progress-circular>
+                  <p class="text-body-2 text-grey-darken-1 mt-2">Loading more feedback...</p>
+                </v-col>
+              </v-row>
+
+              <!-- End of List Indicator -->
+              <v-row
+                v-if="
+                  !loading &&
+                  !isLoadingMore &&
+                  publishedFeedback.length > 0 &&
+                  feedbacksPage >= feedbacksTotalPages
+                "
+                class="mt-4"
               >
-                <template v-slot:item.user_name="{ item }">
-                  <div class="d-flex align-center">
-                    <v-avatar size="40" class="mr-3">
-                      <v-img
-                        :src="item.profile_pic || 'https://i.pravatar.cc/150?img=12'"
-                      ></v-img>
-                    </v-avatar>
-                    <div>
-                      <div class="font-weight-medium">{{ item.user_name }}</div>
-                      <div class="text-caption text-grey-darken-1">{{ item.profession }}</div>
-                    </div>
-                  </div>
-                </template>
-
-                <template v-slot:item.feedback_type="{ item }">
-                  <v-chip
-                    :color="item.feedback_type === 'general' ? 'primary' : 'success'"
-                    size="small"
-                    variant="tonal"
-                  >
-                    {{ item.feedback_type }}
-                    <span v-if="item.product"> - {{ item.product }}</span>
-                  </v-chip>
-                </template>
-
-                <template v-slot:item.rating="{ item }">
-                  <v-rating
-                    :model-value="item.rating"
-                    :length="5"
-                    color="warning"
-                    size="small"
-                    readonly
-                  ></v-rating>
-                </template>
-
-                <template v-slot:item.status="{ item }">
-                  <v-chip :color="getStatusColor(item.status)" size="small" variant="tonal">
-                    {{ item.status }}
-                  </v-chip>
-                </template>
-
-                <template v-slot:item.is_public="{ item }">
-                  <v-switch
-                    :model-value="item.is_public"
-                    @update:model-value="handleTogglePublicStatus(item.id, item.is_public)"
-                    hide-details
-                    density="compact"
-                  ></v-switch>
-                </template>
-
-                <template v-slot:item.actions="{ item }">
-                  <v-menu>
-                    <template v-slot:activator="{ props: menuProps }">
-                      <v-btn
-                        icon="mdi-dots-vertical"
-                        size="small"
-                        variant="text"
-                        v-bind="menuProps"
-                      ></v-btn>
-                    </template>
-                    <v-list>
-                      <v-list-item
-                        title="Approve"
-                        prepend-icon="mdi-check"
-                        @click="handleUpdateFeedbackStatus(item.id, 'approved')"
-                      ></v-list-item>
-                      <v-list-item
-                        title="Reject"
-                        prepend-icon="mdi-cancel"
-                        @click="handleUpdateFeedbackStatus(item.id, 'rejected')"
-                      ></v-list-item>
-                      <v-divider></v-divider>
-                      <v-list-item
-                        title="Delete"
-                        prepend-icon="mdi-delete"
-                        @click="confirmDeleteFeedback(item.id)"
-                      ></v-list-item>
-                    </v-list>
-                  </v-menu>
-                </template>
-              </v-data-table>
+                <v-col cols="12" class="text-center">
+                  <v-divider class="mb-4"></v-divider>
+                  <p class="text-body-2 text-grey">You've reached the end of the list</p>
+                </v-col>
+              </v-row>
             </v-card-text>
           </v-card>
         </v-col>
       </v-row>
     </template>
-
-    <!-- Published Feedback Section (Both Views) -->
-    <v-row :class="userType === 'admin' ? 'mt-6' : ''">
-      <v-col cols="12">
-        <v-card>
-          <v-col cols="12" class="d-flex align-center justify-space-between">
-            <v-card-title>
-              <v-icon icon="mdi-forum" class="mr-2"></v-icon>
-              Community Feedback & Testimonials
-            </v-card-title>
-
-            <v-btn
-              v-if="userType === 'user'"
-              color="primary"
-              variant="elevated"
-              prepend-icon="mdi-plus"
-              @click="openFeedbackDialog"
-            >
-              Submit Feedback
-            </v-btn>
-          </v-col>
-          <v-card-text>
-            <!-- Empty State for Published Feedback -->
-            <div v-if="publishedFeedback.length === 0" class="text-center py-12">
-              <v-icon icon="mdi-comment-off-outline" size="64" color="grey"></v-icon>
-              <p class="text-h6 text-grey-darken-1 mt-4">No published feedback yet</p>
-              <p class="text-body-2 text-grey">
-                {{
-                  userType === 'user'
-                    ? 'Be the first to share your experience!'
-                    : 'Approved public feedback will appear here'
-                }}
-              </p>
-            </div>
-
-            <v-row v-else>
-              <v-col
-                v-for="feedback in publishedFeedback"
-                :key="feedback.id"
-                cols="12"
-                md="6"
-                lg="4"
-              >
-                <v-card variant="outlined" height="100%">
-                  <v-card-text>
-                    <div class="d-flex align-center mb-3">
-                      <v-avatar size="50" class="mr-3">
-                        <v-img
-                          :src="feedback.profile_pic || 'https://i.pravatar.cc/150?img=12'"
-                        ></v-img>
-                      </v-avatar>
-                      <div class="flex-grow-1">
-                        <div class="font-weight-bold text-h6">{{ feedback.user_name }}</div>
-                        <div class="text-caption text-grey-darken-1">{{ feedback.profession }}</div>
-                      </div>
-                    </div>
-
-                    <div class="d-flex align-center justify-space-between mb-3">
-                      <v-rating
-                        :model-value="feedback.rating"
-                        :length="5"
-                        color="warning"
-                        size="small"
-                        readonly
-                      ></v-rating>
-                      <v-chip
-                        :color="feedback.feedback_type === 'general' ? 'primary' : 'success'"
-                        size="small"
-                        variant="tonal"
-                      >
-                        {{ feedback.feedback_type }}
-                      </v-chip>
-                    </div>
-
-                    <p class="text-body-2 mb-3">{{ feedback.message }}</p>
-
-                    <v-divider class="mb-2"></v-divider>
-                    <div
-                      class="d-flex align-center justify-space-between text-caption text-grey-darken-1"
-                    >
-                      <span>{{ new Date(feedback.created_at).toLocaleDateString() }}</span>
-                      <span v-if="feedback.product">
-                        <v-icon icon="mdi-tag" size="12"></v-icon> {{ feedback.product }}
-                      </span>
-                    </div>
-                  </v-card-text>
-                </v-card>
-              </v-col>
-            </v-row>
-          </v-card-text>
-        </v-card>
-      </v-col>
-    </v-row>
-  </template>
 
     <!-- User Feedback Dialog -->
     <v-dialog v-if="userType === 'user'" v-model="showFeedbackDialog" max-width="700px" persistent>

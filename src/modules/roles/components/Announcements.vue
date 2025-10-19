@@ -4,6 +4,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useAnnouncements } from '../composables/useAnnouncements'
+import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import HeaderActions from './shared/HeaderActions.vue'
 
 interface Props {
@@ -30,6 +31,7 @@ const {
   hasNextPage,
   hasPreviousPage,
   fetchAnnouncements,
+  loadMoreAnnouncements,
   searchAnnouncements,
   clearSearch,
   goToPage,
@@ -40,6 +42,16 @@ const {
   deleteAnnouncement,
   setupRealtimeSubscription,
 } = useAnnouncements()
+
+// Infinite scroll for user announcements view
+const { isLoading: isLoadingMore } = useInfiniteScroll({
+  onLoadMore: async () => {
+    if (props.userType === 'user' && !loading.value) {
+      await loadMoreAnnouncements()
+    }
+  },
+  hasMore: () => props.userType === 'user' && currentPage.value < totalPages.value,
+})
 
 const showAnnouncementDialog = ref(false)
 const editingAnnouncement = ref<any>(null)
@@ -257,7 +269,11 @@ const pageSubtitle = computed(() =>
 )
 
 const handleSearch = async (query: string) => {
-  await searchAnnouncements(query)
+  if (query) {
+    await searchAnnouncements(query)
+  } else {
+    await clearSearch()
+  }
 }
 
 const handleClearSearch = async () => {
@@ -385,15 +401,22 @@ const isFormValid = computed(() => {
         </v-col>
       </v-row>
 
-      <!-- User Pagination -->
-      <v-row v-if="totalPages > 1" class="mt-6">
-        <v-col cols="12" class="d-flex justify-center">
-          <v-pagination
-            v-model="currentPage"
-            :length="totalPages"
-            :total-visible="7"
-            @update:model-value="goToPage"
-          ></v-pagination>
+      <!-- Loading More Indicator -->
+      <v-row v-if="isLoadingMore && announcements.length > 0" class="mt-4">
+        <v-col cols="12" class="text-center">
+          <v-progress-circular indeterminate color="primary" size="48"></v-progress-circular>
+          <p class="text-body-2 text-grey-darken-1 mt-2">Loading more announcements...</p>
+        </v-col>
+      </v-row>
+
+      <!-- End of List Indicator -->
+      <v-row
+        v-if="!loading && !isLoadingMore && announcements.length > 0 && currentPage >= totalPages"
+        class="mt-4"
+      >
+        <v-col cols="12" class="text-center">
+          <v-divider class="mb-4"></v-divider>
+          <p class="text-body-2 text-grey">You've reached the end of the list</p>
         </v-col>
       </v-row>
     </template>

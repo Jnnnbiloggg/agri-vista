@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTrainings } from '../composables/useTrainings'
+import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import HeaderActions from './shared/HeaderActions.vue'
 
 interface Props {
@@ -29,6 +30,7 @@ const {
   trainingsTotalPages,
   registrationsTotalPages,
   fetchTrainings,
+  loadMoreTrainings,
   searchTrainings,
   clearTrainingsSearch,
   createTraining,
@@ -42,6 +44,16 @@ const {
   deleteRegistration,
   setupRealtimeSubscriptions,
 } = useTrainings()
+
+// Infinite scroll for user trainings view
+const { isLoading: isLoadingMore } = useInfiniteScroll({
+  onLoadMore: async () => {
+    if (props.userType === 'user' && !loading.value) {
+      await loadMoreTrainings()
+    }
+  },
+  hasMore: () => props.userType === 'user' && trainingsPage.value < trainingsTotalPages.value,
+})
 
 // Dialog states
 const showTrainingDialog = ref(false)
@@ -357,12 +369,24 @@ const pageSubtitle = computed(() =>
 
 const handleSearch = async (query: string) => {
   if (adminTab.value === 'trainings') {
-    await searchTrainings(query)
+    if (query) {
+      await searchTrainings(query)
+    } else {
+      await clearTrainingsSearch()
+    }
   } else if (adminTab.value === 'registrations') {
-    await searchRegistrations(query)
+    if (query) {
+      await searchRegistrations(query)
+    } else {
+      await clearRegistrationsSearch()
+    }
   } else {
     // For user view, search trainings
-    await searchTrainings(query)
+    if (query) {
+      await searchTrainings(query)
+    } else {
+      await clearTrainingsSearch()
+    }
   }
 }
 
@@ -709,6 +733,30 @@ const handleSettingsClick = () => {
               </v-btn>
             </v-card-actions>
           </v-card>
+        </v-col>
+      </v-row>
+
+      <!-- Loading More Indicator -->
+      <v-row v-if="isLoadingMore && filteredTrainings.length > 0" class="mt-4">
+        <v-col cols="12" class="text-center">
+          <v-progress-circular indeterminate color="primary" size="48"></v-progress-circular>
+          <p class="text-body-2 text-grey-darken-1 mt-2">Loading more trainings...</p>
+        </v-col>
+      </v-row>
+
+      <!-- End of List Indicator -->
+      <v-row
+        v-if="
+          !loading &&
+          !isLoadingMore &&
+          filteredTrainings.length > 0 &&
+          trainingsPage >= trainingsTotalPages
+        "
+        class="mt-4"
+      >
+        <v-col cols="12" class="text-center">
+          <v-divider class="mb-4"></v-divider>
+          <p class="text-body-2 text-grey">You've reached the end of the list</p>
         </v-col>
       </v-row>
     </template>

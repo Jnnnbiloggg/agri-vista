@@ -71,7 +71,7 @@ export const useProducts = () => {
   // PRODUCTS
   // ============================================
 
-  const fetchProducts = async (options?: Partial<PaginationOptions>) => {
+  const fetchProducts = async (options?: Partial<PaginationOptions> & { append?: boolean }) => {
     loading.value = true
     error.value = null
 
@@ -99,13 +99,25 @@ export const useProducts = () => {
 
       if (fetchError) throw fetchError
 
-      products.value = data || []
+      // Append or replace data based on options
+      if (options?.append) {
+        products.value = [...products.value, ...(data || [])]
+      } else {
+        products.value = data || []
+      }
       productsTotal.value = count || 0
     } catch (err: any) {
       error.value = err.message
       console.error('Error fetching products:', err)
     } finally {
       loading.value = false
+    }
+  }
+
+  const loadMoreProducts = async () => {
+    if (productsPage.value < productsTotalPages.value) {
+      productsPage.value += 1
+      await fetchProducts({ append: true })
     }
   }
 
@@ -516,6 +528,7 @@ export const useProducts = () => {
 
     // Products methods
     fetchProducts,
+    loadMoreProducts,
     searchProducts,
     clearProductsSearch,
     createProduct,

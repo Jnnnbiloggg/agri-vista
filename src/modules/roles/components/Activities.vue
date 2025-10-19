@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useActivities } from '../composables/useActivities'
+import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import HeaderActions from './shared/HeaderActions.vue'
 
 interface Props {
@@ -33,6 +34,7 @@ const {
   bookingsTotalPages,
   appointmentsTotalPages,
   fetchActivities,
+  loadMoreActivities,
   searchActivities,
   clearActivitiesSearch,
   createActivity,
@@ -52,6 +54,16 @@ const {
   deleteAppointment,
   setupRealtimeSubscriptions,
 } = useActivities()
+
+// Infinite scroll for user activities view
+const { isLoading: isLoadingMore } = useInfiniteScroll({
+  onLoadMore: async () => {
+    if (props.userType === 'user' && !loading.value) {
+      await loadMoreActivities()
+    }
+  },
+  hasMore: () => props.userType === 'user' && activitiesPage.value < activitiesTotalPages.value,
+})
 
 // Dialog states
 const showAppointmentDialog = ref(false)
@@ -449,17 +461,33 @@ const handleSearch = async (query: string) => {
   if (props.userType === 'admin') {
     switch (adminTab.value) {
       case 'activities':
-        await searchActivities(query)
+        if (query) {
+          await searchActivities(query)
+        } else {
+          await clearActivitiesSearch()
+        }
         break
       case 'bookings':
-        await searchBookings(query)
+        if (query) {
+          await searchBookings(query)
+        } else {
+          await clearBookingsSearch()
+        }
         break
       case 'appointments':
-        await searchAppointments(query)
+        if (query) {
+          await searchAppointments(query)
+        } else {
+          await clearAppointmentsSearch()
+        }
         break
     }
   } else {
-    await searchActivities(query)
+    if (query) {
+      await searchActivities(query)
+    } else {
+      await clearActivitiesSearch()
+    }
   }
 }
 
@@ -598,6 +626,30 @@ const formatTime = (timeString: string) => {
               </v-btn>
             </v-card-actions>
           </v-card>
+        </v-col>
+      </v-row>
+
+      <!-- Loading More Indicator -->
+      <v-row v-if="isLoadingMore && activities.length > 0" class="mt-4">
+        <v-col cols="12" class="text-center">
+          <v-progress-circular indeterminate color="primary" size="48"></v-progress-circular>
+          <p class="text-body-2 text-grey-darken-1 mt-2">Loading more activities...</p>
+        </v-col>
+      </v-row>
+
+      <!-- End of List Indicator -->
+      <v-row
+        v-if="
+          !loading &&
+          !isLoadingMore &&
+          activities.length > 0 &&
+          activitiesPage >= activitiesTotalPages
+        "
+        class="mt-4"
+      >
+        <v-col cols="12" class="text-center">
+          <v-divider class="mb-4"></v-divider>
+          <p class="text-body-2 text-grey">You've reached the end of the list</p>
         </v-col>
       </v-row>
     </template>

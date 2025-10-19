@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useProducts } from '../composables/useProducts'
+import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import HeaderActions from './shared/HeaderActions.vue'
 
 interface Props {
@@ -29,6 +30,7 @@ const {
   productsTotalPages,
   ordersTotalPages,
   fetchProducts,
+  loadMoreProducts,
   searchProducts,
   clearProductsSearch,
   createProduct,
@@ -42,6 +44,16 @@ const {
   deleteOrder,
   setupRealtimeSubscriptions,
 } = useProducts()
+
+// Infinite scroll for user products view
+const { isLoading: isLoadingMore } = useInfiniteScroll({
+  onLoadMore: async () => {
+    if (props.userType === 'user' && !loading.value) {
+      await loadMoreProducts()
+    }
+  },
+  hasMore: () => props.userType === 'user' && productsPage.value < productsTotalPages.value,
+})
 
 // Dialog states
 const showProductDialog = ref(false)
@@ -334,9 +346,29 @@ const pageSubtitle = computed(() =>
     : 'Browse and reserve fresh farm products',
 )
 
-const handleSearch = (query: string) => {
-  console.log('Search query:', query)
-  // Implement your search logic here
+const handleSearch = async (query: string) => {
+  if (props.userType === 'admin') {
+    if (adminTab.value === 'products') {
+      if (query) {
+        await searchProducts(query)
+      } else {
+        await clearProductsSearch()
+      }
+    } else if (adminTab.value === 'orders') {
+      if (query) {
+        await searchOrders(query)
+      } else {
+        await clearOrdersSearch()
+      }
+    }
+  } else {
+    // For user view, search products
+    if (query) {
+      await searchProducts(query)
+    } else {
+      await clearProductsSearch()
+    }
+  }
 }
 
 const handleSettingsClick = () => {
@@ -629,6 +661,27 @@ const handleSettingsClick = () => {
               </v-btn>
             </v-card-actions>
           </v-card>
+        </v-col>
+      </v-row>
+
+      <!-- Loading More Indicator -->
+      <v-row v-if="isLoadingMore && products.length > 0" class="mt-4">
+        <v-col cols="12" class="text-center">
+          <v-progress-circular indeterminate color="primary" size="48"></v-progress-circular>
+          <p class="text-body-2 text-grey-darken-1 mt-2">Loading more products...</p>
+        </v-col>
+      </v-row>
+
+      <!-- End of List Indicator -->
+      <v-row
+        v-if="
+          !loading && !isLoadingMore && products.length > 0 && productsPage >= productsTotalPages
+        "
+        class="mt-4"
+      >
+        <v-col cols="12" class="text-center">
+          <v-divider class="mb-4"></v-divider>
+          <p class="text-body-2 text-grey">You've reached the end of the list</p>
         </v-col>
       </v-row>
     </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 
 interface Notification {
@@ -35,6 +35,18 @@ const { signOut } = useAuth()
 const searchQuery = ref('')
 const showNotificationMenu = ref(false)
 const showSettingsMenu = ref(false)
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+// Debounced search watcher
+watch(searchQuery, (newValue) => {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+  }
+
+  debounceTimer = setTimeout(() => {
+    emit('search', newValue?.trim() || '')
+  }, 300) // 300ms debounce delay
+})
 
 // Sample notifications data
 const notifications = ref<Notification[]>([
@@ -65,12 +77,6 @@ const notifications = ref<Notification[]>([
 ])
 
 const unreadCount = computed(() => notifications.value.filter((n) => !n.read).length)
-
-const handleSearch = () => {
-  if (searchQuery.value.trim()) {
-    emit('search', searchQuery.value)
-  }
-}
 
 const markAsRead = (id: number) => {
   const notification = notifications.value.find((n) => n.id === id)
@@ -138,7 +144,6 @@ const handleLogout = async () => {
       clearable
       class="header-search"
       style="min-width: 250px; width: 250px"
-      @keyup.enter="handleSearch"
       @click:clear="searchQuery = ''"
     ></v-text-field>
 
@@ -256,12 +261,41 @@ const handleLogout = async () => {
 </template>
 
 <style scoped>
+.header-search {
+  min-width: 280px;
+}
+
 .header-search :deep(.v-field) {
-  border-radius: 24px;
+  border-radius: var(--radius-full) !important;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  transition: all var(--transition-fast);
+}
+
+.header-search :deep(.v-field:hover) {
+  border-color: rgba(76, 175, 80, 0.3);
+}
+
+.header-search :deep(.v-field--focused) {
+  border-color: rgba(76, 175, 80, 0.5) !important;
 }
 
 .header-search :deep(.v-field__input) {
-  padding-top: 8px;
-  padding-bottom: 8px;
+  padding-top: var(--spacing-sm);
+  padding-bottom: var(--spacing-sm);
+}
+
+/* Notification list items */
+:deep(.v-list-item) {
+  border-radius: var(--radius-md);
+  margin: var(--spacing-xs) var(--spacing-sm);
+  transition: all var(--transition-fast);
+}
+
+:deep(.v-list-item:hover) {
+  background-color: rgba(76, 175, 80, 0.04) !important;
+}
+
+:deep(.bg-blue-lighten-5) {
+  background-color: rgba(33, 150, 243, 0.08) !important;
 }
 </style>

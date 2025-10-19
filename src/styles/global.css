@@ -3,6 +3,13 @@
 /* Smooth scrolling behavior */
 html {
   scroll-behavior: smooth;
+  font-size: 16px;
+}
+
+body {
+  font-family: 'Roboto', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Common section styling */
@@ -26,65 +33,52 @@ html {
   height: 100%;
 }
 
-/* Responsive typography */
-@media (max-width: 960px) {
-  .image-grid .v-col {
-    margin-top: 0 !important;
-  }
-
-  .display-1 {
-    font-size: 2.5rem !important;
-  }
-
-  .text-h4 {
-    font-size: 1.8rem !important;
-  }
-}
-
-@media (max-width: 600px) {
-  .display-1 {
-    font-size: 2rem !important;
-  }
-
-  .text-h4 {
-    font-size: 1.5rem !important;
-  }
-
-  .text-h6 {
-    font-size: 1.1rem !important;
-  }
-}
-
-/* Custom button styles */
-.btn-primary {
-  background-color: #4caf50 !important;
-  color: white !important;
-}
-
-.btn-primary:hover {
-  background-color: #45a049 !important;
-}
-
-/* Common card styles */
-.feature-card {
-  transition: transform 0.2s ease-in-out;
-}
-
-.feature-card:hover {
-  transform: translateY(-4px);
-}
-
 /* Focus states for accessibility */
 .v-btn:focus-visible {
   outline: 2px solid #4caf50;
   outline-offset: 2px;
 }
 
-/* Image optimization */
-.v-img {
-  transition: transform 0.3s ease;
+/* Responsive typography */
+@media (max-width: 960px) {
+  .image-grid .v-col {
+    margin-top: 0 !important;
+  }
 }
 
-.v-img:hover {
-  transform: scale(1.02);
+@media (max-width: 600px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+/* Feature card animation */
+.feature-card {
+  transition: transform var(--transition-base);
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+}
+
+/* Remove default Vuetify overrides that conflict with design system */
+.v-application {
+  background: var(--v-theme-background) !important;
+}
+
+/* Ensure consistent spacing across the app */
+.v-container {
+  padding: var(--spacing-lg);
+}
+
+@media (min-width: 1280px) {
+  .v-container {
+    max-width: 1400px;
+  }
+}
+
+@media (min-width: 1920px) {
+  .v-container {
+    max-width: 1600px;
+  }
 }

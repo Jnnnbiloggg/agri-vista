@@ -10,6 +10,7 @@ import { useAuth } from './composables/useAuth'
 
 // Import global styles
 import './styles/global.css'
+import './styles/design-system.css'
 
 const app = createApp(App)
 

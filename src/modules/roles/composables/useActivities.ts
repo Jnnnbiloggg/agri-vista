@@ -93,7 +93,7 @@ export const useActivities = () => {
   // ACTIVITIES
   // ============================================
 
-  const fetchActivities = async (options?: Partial<PaginationOptions>) => {
+  const fetchActivities = async (options?: Partial<PaginationOptions> & { append?: boolean }) => {
     loading.value = true
     error.value = null
 
@@ -121,13 +121,25 @@ export const useActivities = () => {
 
       if (fetchError) throw fetchError
 
-      activities.value = data || []
+      // Append or replace data based on options
+      if (options?.append) {
+        activities.value = [...activities.value, ...(data || [])]
+      } else {
+        activities.value = data || []
+      }
       activitiesTotal.value = count || 0
     } catch (err: any) {
       error.value = err.message
       console.error('Error fetching activities:', err)
     } finally {
       loading.value = false
+    }
+  }
+
+  const loadMoreActivities = async () => {
+    if (activitiesPage.value < activitiesTotalPages.value) {
+      activitiesPage.value += 1
+      await fetchActivities({ append: true })
     }
   }
 
@@ -678,6 +690,7 @@ export const useActivities = () => {
 
     // Activities methods
     fetchActivities,
+    loadMoreActivities,
     searchActivities,
     clearActivitiesSearch,
     createActivity,

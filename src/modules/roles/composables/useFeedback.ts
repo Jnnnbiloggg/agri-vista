@@ -53,7 +53,7 @@ export const useFeedback = () => {
   // FEEDBACKS
   // ============================================
 
-  const fetchFeedbacks = async (options?: Partial<PaginationOptions>) => {
+  const fetchFeedbacks = async (options?: Partial<PaginationOptions> & { append?: boolean }) => {
     loading.value = true
     error.value = null
 
@@ -84,7 +84,12 @@ export const useFeedback = () => {
 
       if (fetchError) throw fetchError
 
-      feedbacks.value = data || []
+      // Append or replace data based on options
+      if (options?.append) {
+        feedbacks.value = [...feedbacks.value, ...(data || [])]
+      } else {
+        feedbacks.value = data || []
+      }
       feedbacksTotal.value = count || 0
       feedbacksPage.value = page
     } catch (err: any) {
@@ -92,6 +97,13 @@ export const useFeedback = () => {
       console.error('Error fetching feedbacks:', err)
     } finally {
       loading.value = false
+    }
+  }
+
+  const loadMoreFeedbacks = async () => {
+    if (feedbacksPage.value < feedbacksTotalPages.value) {
+      feedbacksPage.value += 1
+      await fetchFeedbacks({ append: true })
     }
   }
 
@@ -265,6 +277,7 @@ export const useFeedback = () => {
 
     // Methods
     fetchFeedbacks,
+    loadMoreFeedbacks,
     searchFeedbacks,
     clearFeedbacksSearch,
     createFeedback,

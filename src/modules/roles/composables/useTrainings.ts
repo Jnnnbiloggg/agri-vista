@@ -73,7 +73,7 @@ export const useTrainings = () => {
   // TRAININGS
   // ============================================
 
-  const fetchTrainings = async (options?: Partial<PaginationOptions>) => {
+  const fetchTrainings = async (options?: Partial<PaginationOptions> & { append?: boolean }) => {
     loading.value = true
     error.value = null
 
@@ -102,7 +102,12 @@ export const useTrainings = () => {
 
       if (fetchError) throw fetchError
 
-      trainings.value = data || []
+      // Append or replace data based on options
+      if (options?.append) {
+        trainings.value = [...trainings.value, ...(data || [])]
+      } else {
+        trainings.value = data || []
+      }
       trainingsTotal.value = count || 0
       trainingsPage.value = page
 
@@ -113,6 +118,13 @@ export const useTrainings = () => {
       return { success: false, error: err.message }
     } finally {
       loading.value = false
+    }
+  }
+
+  const loadMoreTrainings = async () => {
+    if (trainingsPage.value < trainingsTotalPages.value) {
+      trainingsPage.value += 1
+      await fetchTrainings({ append: true })
     }
   }
 
@@ -494,6 +506,7 @@ export const useTrainings = () => {
     registrationsTotalPages,
     // Trainings
     fetchTrainings,
+    loadMoreTrainings,
     searchTrainings,
     clearTrainingsSearch,
     createTraining,

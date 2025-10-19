@@ -28,9 +28,46 @@ const vuetify = createVuetify({
           info: '#2196F3',
           success: '#4CAF50',
           surface: '#FFFFFF',
-          background: '#F5F5F5',
+          background: '#F8F9FA',
         },
       },
+    },
+  },
+  defaults: {
+    VBtn: {
+      rounded: 'pill',
+      elevation: 0,
+      style: 'text-transform: none; letter-spacing: 0.025em;',
+    },
+    VCard: {
+      rounded: 'xl',
+      elevation: 0,
+    },
+    VTextField: {
+      variant: 'outlined',
+      density: 'comfortable',
+      rounded: 'lg',
+    },
+    VSelect: {
+      variant: 'outlined',
+      density: 'comfortable',
+      rounded: 'lg',
+    },
+    VTextarea: {
+      variant: 'outlined',
+      rounded: 'lg',
+    },
+    VChip: {
+      rounded: 'pill',
+    },
+    VDataTable: {
+      class: 'modern-table',
+    },
+    VDialog: {
+      class: 'modern-dialog',
+    },
+    VMenu: {
+      class: 'modern-menu',
     },
   },
 })
