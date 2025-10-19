@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useFeedback } from '../composables/useFeedback'
 import HeaderActions from './shared/HeaderActions.vue'
 
 interface Props {
@@ -12,66 +13,44 @@ const props = defineProps<Props>()
 // Get user info from auth store
 const authStore = useAuthStore()
 const userName = computed(() => authStore.fullName)
-const userProfilePic = computed(() => 'https://i.pravatar.cc/150?img=12')
+const userEmail = computed(() => authStore.userEmail)
 
-interface Feedback {
-  id: number
-  name: string
-  profilePic: string
-  profession: string
-  feedbackType: 'general' | 'product'
-  product?: string
-  message: string
-  rating: number
-  status: string
-  submittedAt: string
-  isPublic: boolean
-}
+// Use feedback composable
+const {
+  feedbacks,
+  loading,
+  error,
+  feedbacksTotal,
+  feedbacksPage,
+  itemsPerPage,
+  feedbacksTotalPages,
+  fetchFeedbacks,
+  searchFeedbacks,
+  clearFeedbacksSearch,
+  createFeedback,
+  updateFeedback,
+  deleteFeedback,
+  calculateRatings,
+  setupRealtimeSubscription,
+  cleanupRealtimeSubscription,
+} = useFeedback()
 
-const feedbacks = ref<Feedback[]>([
-  {
-    id: 1,
-    name: 'Maria Santos',
-    profilePic: 'https://i.pravatar.cc/150?img=1',
-    profession: 'Professor',
-    feedbackType: 'general',
-    message:
-      'Amazing farm experience! The staff was knowledgeable and the tour was very educational.',
-    rating: 5,
-    status: 'approved',
-    submittedAt: '2025-01-15T10:30:00',
-    isPublic: true,
-  },
-  {
-    id: 2,
-    name: 'John Rivera',
-    profilePic: 'https://i.pravatar.cc/150?img=3',
-    profession: 'Student',
-    feedbackType: 'product',
-    product: 'Strawberry',
-    message: "The strawberries are so fresh and sweet! Best quality I've ever tasted.",
-    rating: 5,
-    status: 'approved',
-    submittedAt: '2025-01-14T14:20:00',
-    isPublic: true,
-  },
-  {
-    id: 3,
-    name: 'Sarah Lee',
-    profilePic: 'https://i.pravatar.cc/150?img=5',
-    profession: 'Guest',
-    feedbackType: 'product',
-    product: 'Tomatoes',
-    message: 'Good quality tomatoes, though a bit pricey.',
-    rating: 4,
-    status: 'approved',
-    submittedAt: '2025-01-13T09:15:00',
-    isPublic: true,
-  },
-])
-
+// Dialog states
 const showFeedbackDialog = ref(false)
 const showSuccessDialog = ref(false)
+const showDeleteDialog = ref(false)
+const feedbackToDelete = ref<number | null>(null)
+
+// Snackbar
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('success')
+
+const showSnackbar = (message: string, color: 'success' | 'error' | 'info' = 'success') => {
+  snackbarMessage.value = message
+  snackbarColor.value = color
+  snackbar.value = true
+}
 
 const feedbackForm = ref({
   profession: '',
@@ -80,6 +59,7 @@ const feedbackForm = ref({
   message: '',
   rating: 5,
   isPublic: true,
+  profilePic: '',
 })
 
 const professions = [
@@ -103,27 +83,22 @@ const products = [
 const timeRange = ref<'weekly' | 'monthly' | 'yearly'>('monthly')
 const selectedProduct = ref('strawberry')
 
-const calculateRatings = (type: 'general' | 'product', productName?: string) => {
-  const filtered = feedbacks.value.filter((f) => {
-    if (type === 'general') return f.feedbackType === 'general' && f.status === 'approved'
-    return (
-      f.feedbackType === 'product' &&
-      f.product?.toLowerCase() === productName?.toLowerCase() &&
-      f.status === 'approved'
-    )
-  })
+// Load feedbacks on component mount
+onMounted(async () => {
+  await fetchFeedbacks()
+  setupRealtimeSubscription()
+})
 
-  const positive = filtered.filter((f) => f.rating >= 4).length
-  const negative = filtered.filter((f) => f.rating < 4).length
+onUnmounted(() => {
+  cleanupRealtimeSubscription()
+})
 
-  return { positive, negative, total: filtered.length }
-}
-
+// Computed values
 const generalRatings = computed(() => calculateRatings('general'))
 const productRatings = computed(() => calculateRatings('product', selectedProduct.value))
 
 const publishedFeedback = computed(() =>
-  feedbacks.value.filter((f) => f.status === 'approved' && f.isPublic),
+  feedbacks.value.filter((f) => f.status === 'approved' && f.is_public),
 )
 
 // User functions
@@ -135,65 +110,83 @@ const openFeedbackDialog = () => {
     message: '',
     rating: 5,
     isPublic: true,
+    profilePic: 'https://i.pravatar.cc/150?img=' + Math.floor(Math.random() * 70),
   }
   showFeedbackDialog.value = true
 }
 
-const handleSubmitFeedback = () => {
-  const newFeedback: Feedback = {
-    id: Math.max(...feedbacks.value.map((f) => f.id), 0) + 1,
-    name: userName.value,
-    profilePic: userProfilePic.value,
-    profession: feedbackForm.value.profession,
-    feedbackType: feedbackForm.value.feedbackType,
-    product: feedbackForm.value.feedbackType === 'product' ? feedbackForm.value.product : undefined,
-    message: feedbackForm.value.message,
-    rating: feedbackForm.value.rating,
-    status: 'pending',
-    submittedAt: new Date().toISOString(),
-    isPublic: feedbackForm.value.isPublic,
-  }
+const handleSubmitFeedback = async () => {
+  try {
+    await createFeedback({
+      profession: feedbackForm.value.profession,
+      feedback_type: feedbackForm.value.feedbackType,
+      product: feedbackForm.value.feedbackType === 'product' ? feedbackForm.value.product : null,
+      message: feedbackForm.value.message,
+      rating: feedbackForm.value.rating,
+      is_public: feedbackForm.value.isPublic,
+      profile_pic: feedbackForm.value.profilePic,
+    })
 
-  feedbacks.value.unshift(newFeedback)
-  showFeedbackDialog.value = false
-  showSuccessDialog.value = true
+    showFeedbackDialog.value = false
+    showSuccessDialog.value = true
+    showSnackbar('Feedback submitted successfully!', 'success')
+  } catch (err) {
+    showSnackbar('Failed to submit feedback. Please try again.', 'error')
+  }
 }
 
 // Admin functions
-const updateFeedbackStatus = (feedbackId: number, newStatus: string) => {
+const handleUpdateFeedbackStatus = async (
+  feedbackId: number,
+  newStatus: 'pending' | 'approved' | 'rejected',
+) => {
   if (props.userType === 'admin') {
-    const feedback = feedbacks.value.find((f) => f.id === feedbackId)
-    if (feedback) {
-      feedback.status = newStatus
+    try {
+      await updateFeedback(feedbackId, { status: newStatus })
+      showSnackbar(`Feedback ${newStatus} successfully!`, 'success')
+    } catch (err) {
+      showSnackbar('Failed to update feedback status.', 'error')
     }
   }
 }
 
-const deleteFeedback = (feedbackId: number) => {
-  if (props.userType === 'admin') {
-    const index = feedbacks.value.findIndex((f) => f.id === feedbackId)
-    if (index !== -1) {
-      feedbacks.value.splice(index, 1)
+const confirmDeleteFeedback = (feedbackId: number) => {
+  feedbackToDelete.value = feedbackId
+  showDeleteDialog.value = true
+}
+
+const handleDeleteFeedback = async () => {
+  if (feedbackToDelete.value !== null) {
+    try {
+      await deleteFeedback(feedbackToDelete.value)
+      showSnackbar('Feedback deleted successfully!', 'success')
+    } catch (err) {
+      showSnackbar('Failed to delete feedback.', 'error')
+    } finally {
+      showDeleteDialog.value = false
+      feedbackToDelete.value = null
     }
   }
 }
 
-const togglePublicStatus = (feedbackId: number) => {
+const handleTogglePublicStatus = async (feedbackId: number, currentStatus: boolean) => {
   if (props.userType === 'admin') {
-    const feedback = feedbacks.value.find((f) => f.id === feedbackId)
-    if (feedback) {
-      feedback.isPublic = !feedback.isPublic
+    try {
+      await updateFeedback(feedbackId, { is_public: !currentStatus })
+      showSnackbar('Visibility updated successfully!', 'success')
+    } catch (err) {
+      showSnackbar('Failed to update visibility.', 'error')
     }
   }
 }
 
 const adminTableHeaders = [
-  { title: 'User', key: 'name' },
-  { title: 'Type', key: 'feedbackType' },
+  { title: 'User', key: 'user_name' },
+  { title: 'Type', key: 'feedback_type' },
   { title: 'Rating', key: 'rating' },
   { title: 'Status', key: 'status' },
-  { title: 'Public', key: 'isPublic' },
-  { title: 'Actions', key: 'actions' },
+  { title: 'Public', key: 'is_public' },
+  { title: 'Actions', key: 'actions', sortable: false },
 ]
 
 const getStatusColor = (status: string) => {
@@ -215,14 +208,22 @@ const pageTitle = computed(() =>
     : 'Community Feedback & Testimonials',
 )
 
-const handleSearch = (query: string) => {
-  console.log('Search query:', query)
-  // Implement your search logic here
+const pageSubtitle = computed(() =>
+  props.userType === 'admin'
+    ? 'Manage feedback and track ratings'
+    : 'View testimonials and share your experience',
+)
+
+const handleSearch = async (query: string) => {
+  await searchFeedbacks(query)
+}
+
+const handleClearSearch = async () => {
+  await clearFeedbacksSearch()
 }
 
 const handleSettingsClick = () => {
   console.log('Settings clicked')
-  // Navigate to settings or open settings dialog
 }
 </script>
 
@@ -233,22 +234,28 @@ const handleSettingsClick = () => {
       <v-col cols="12" class="d-flex align-center justify-space-between">
         <div>
           <h1 class="text-h4 font-weight-bold text-primary mb-2">{{ pageTitle }}</h1>
-          <p class="text-h6 text-grey-darken-1">
-            {{
-              userType === 'admin'
-                ? 'Manage feedback and track ratings'
-                : 'View testimonials and share your experience'
-            }}
-          </p>
+          <p class="text-h6 text-grey-darken-1">{{ pageSubtitle }}</p>
         </div>
 
         <HeaderActions
           search-placeholder="Search feedback..."
           @search="handleSearch"
+          @clear-search="handleClearSearch"
           @settings-click="handleSettingsClick"
         />
       </v-col>
     </v-row>
+
+    <!-- Loading State -->
+    <v-row v-if="loading && feedbacks.length === 0" class="mb-6">
+      <v-col cols="12" class="text-center py-12">
+        <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
+        <p class="text-h6 text-grey-darken-1 mt-4">Loading feedbacks...</p>
+      </v-col>
+    </v-row>
+
+    <!-- Content -->
+    <template v-else>
 
     <!-- Admin View: Analytics Cards -->
     <template v-if="userType === 'admin'">
@@ -420,26 +427,43 @@ const handleSettingsClick = () => {
           <v-card>
             <v-card-title>All Feedback Submissions</v-card-title>
             <v-card-text>
-              <v-data-table :headers="adminTableHeaders" :items="feedbacks" item-value="id">
-                <template v-slot:item.name="{ item }">
+              <!-- Empty State for Admin -->
+              <div v-if="feedbacks.length === 0" class="text-center py-12">
+                <v-icon icon="mdi-comment-off-outline" size="64" color="grey"></v-icon>
+                <p class="text-h6 text-grey-darken-1 mt-4">No feedback submissions yet</p>
+                <p class="text-body-2 text-grey">
+                  Feedback from users will appear here once submitted
+                </p>
+              </div>
+
+              <v-data-table
+                v-else
+                :headers="adminTableHeaders"
+                :items="feedbacks"
+                item-value="id"
+                :loading="loading"
+              >
+                <template v-slot:item.user_name="{ item }">
                   <div class="d-flex align-center">
                     <v-avatar size="40" class="mr-3">
-                      <v-img :src="item.profilePic"></v-img>
+                      <v-img
+                        :src="item.profile_pic || 'https://i.pravatar.cc/150?img=12'"
+                      ></v-img>
                     </v-avatar>
                     <div>
-                      <div class="font-weight-medium">{{ item.name }}</div>
+                      <div class="font-weight-medium">{{ item.user_name }}</div>
                       <div class="text-caption text-grey-darken-1">{{ item.profession }}</div>
                     </div>
                   </div>
                 </template>
 
-                <template v-slot:item.feedbackType="{ item }">
+                <template v-slot:item.feedback_type="{ item }">
                   <v-chip
-                    :color="item.feedbackType === 'general' ? 'primary' : 'success'"
+                    :color="item.feedback_type === 'general' ? 'primary' : 'success'"
                     size="small"
                     variant="tonal"
                   >
-                    {{ item.feedbackType }}
+                    {{ item.feedback_type }}
                     <span v-if="item.product"> - {{ item.product }}</span>
                   </v-chip>
                 </template>
@@ -460,10 +484,10 @@ const handleSettingsClick = () => {
                   </v-chip>
                 </template>
 
-                <template v-slot:item.isPublic="{ item }">
+                <template v-slot:item.is_public="{ item }">
                   <v-switch
-                    :model-value="item.isPublic"
-                    @update:model-value="togglePublicStatus(item.id)"
+                    :model-value="item.is_public"
+                    @update:model-value="handleTogglePublicStatus(item.id, item.is_public)"
                     hide-details
                     density="compact"
                   ></v-switch>
@@ -483,18 +507,18 @@ const handleSettingsClick = () => {
                       <v-list-item
                         title="Approve"
                         prepend-icon="mdi-check"
-                        @click="updateFeedbackStatus(item.id, 'approved')"
+                        @click="handleUpdateFeedbackStatus(item.id, 'approved')"
                       ></v-list-item>
                       <v-list-item
                         title="Reject"
                         prepend-icon="mdi-cancel"
-                        @click="updateFeedbackStatus(item.id, 'rejected')"
+                        @click="handleUpdateFeedbackStatus(item.id, 'rejected')"
                       ></v-list-item>
                       <v-divider></v-divider>
                       <v-list-item
                         title="Delete"
                         prepend-icon="mdi-delete"
-                        @click="deleteFeedback(item.id)"
+                        @click="confirmDeleteFeedback(item.id)"
                       ></v-list-item>
                     </v-list>
                   </v-menu>
@@ -527,7 +551,20 @@ const handleSettingsClick = () => {
             </v-btn>
           </v-col>
           <v-card-text>
-            <v-row>
+            <!-- Empty State for Published Feedback -->
+            <div v-if="publishedFeedback.length === 0" class="text-center py-12">
+              <v-icon icon="mdi-comment-off-outline" size="64" color="grey"></v-icon>
+              <p class="text-h6 text-grey-darken-1 mt-4">No published feedback yet</p>
+              <p class="text-body-2 text-grey">
+                {{
+                  userType === 'user'
+                    ? 'Be the first to share your experience!'
+                    : 'Approved public feedback will appear here'
+                }}
+              </p>
+            </div>
+
+            <v-row v-else>
               <v-col
                 v-for="feedback in publishedFeedback"
                 :key="feedback.id"
@@ -539,10 +576,12 @@ const handleSettingsClick = () => {
                   <v-card-text>
                     <div class="d-flex align-center mb-3">
                       <v-avatar size="50" class="mr-3">
-                        <v-img :src="feedback.profilePic"></v-img>
+                        <v-img
+                          :src="feedback.profile_pic || 'https://i.pravatar.cc/150?img=12'"
+                        ></v-img>
                       </v-avatar>
                       <div class="flex-grow-1">
-                        <div class="font-weight-bold text-h6">{{ feedback.name }}</div>
+                        <div class="font-weight-bold text-h6">{{ feedback.user_name }}</div>
                         <div class="text-caption text-grey-darken-1">{{ feedback.profession }}</div>
                       </div>
                     </div>
@@ -556,11 +595,11 @@ const handleSettingsClick = () => {
                         readonly
                       ></v-rating>
                       <v-chip
-                        :color="feedback.feedbackType === 'general' ? 'primary' : 'success'"
+                        :color="feedback.feedback_type === 'general' ? 'primary' : 'success'"
                         size="small"
                         variant="tonal"
                       >
-                        {{ feedback.feedbackType }}
+                        {{ feedback.feedback_type }}
                       </v-chip>
                     </div>
 
@@ -570,7 +609,7 @@ const handleSettingsClick = () => {
                     <div
                       class="d-flex align-center justify-space-between text-caption text-grey-darken-1"
                     >
-                      <span>{{ new Date(feedback.submittedAt).toLocaleDateString() }}</span>
+                      <span>{{ new Date(feedback.created_at).toLocaleDateString() }}</span>
                       <span v-if="feedback.product">
                         <v-icon icon="mdi-tag" size="12"></v-icon> {{ feedback.product }}
                       </span>
@@ -583,6 +622,7 @@ const handleSettingsClick = () => {
         </v-card>
       </v-col>
     </v-row>
+  </template>
 
     <!-- User Feedback Dialog -->
     <v-dialog v-if="userType === 'user'" v-model="showFeedbackDialog" max-width="700px" persistent>
@@ -598,7 +638,9 @@ const handleSettingsClick = () => {
               <v-col cols="12">
                 <div class="d-flex align-center pa-4 bg-grey-lighten-4 rounded">
                   <v-avatar size="50" class="mr-3">
-                    <v-img :src="userProfilePic"></v-img>
+                    <v-img
+                      :src="feedbackForm.profilePic || 'https://i.pravatar.cc/150?img=12'"
+                    ></v-img>
                   </v-avatar>
                   <div>
                     <div class="text-h6 font-weight-bold">{{ userName }}</div>
@@ -700,6 +742,29 @@ const handleSettingsClick = () => {
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Delete Confirmation Dialog -->
+    <v-dialog v-model="showDeleteDialog" max-width="500px">
+      <v-card>
+        <v-card-title class="text-h5">Confirm Delete</v-card-title>
+        <v-card-text>
+          Are you sure you want to delete this feedback? This action cannot be undone.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="showDeleteDialog = false">Cancel</v-btn>
+          <v-btn color="error" variant="elevated" @click="handleDeleteFeedback">Delete</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Snackbar for notifications -->
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top">
+      {{ snackbarMessage }}
+      <template v-slot:actions>
+        <v-btn variant="text" @click="snackbar = false">Close</v-btn>
+      </template>
+    </v-snackbar>
   </div>
 </template>
 

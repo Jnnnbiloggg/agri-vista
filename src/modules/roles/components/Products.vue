@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { useProducts } from '../composables/useProducts'
 import HeaderActions from './shared/HeaderActions.vue'
 
 interface Props {
@@ -8,81 +10,65 @@ interface Props {
 
 const props = defineProps<Props>()
 
-interface Product {
-  id: number
-  name: string
-  category: string
-  price: number
-  stock: number
-  images: string[]
-}
+// Get user info from auth store
+const authStore = useAuthStore()
+const userName = computed(() => authStore.fullName)
+const userEmail = computed(() => authStore.userEmail)
 
-interface Order {
-  id: number
-  productName: string
-  quantity: number
-  buyer: string
-  dateOrdered: string
-  orderStatus: 'pending' | 'confirmed' | 'completed' | 'cancelled'
-}
+// Use products composable
+const {
+  products,
+  orders,
+  loading,
+  error,
+  productsTotal,
+  ordersTotal,
+  productsPage,
+  ordersPage,
+  itemsPerPage,
+  productsTotalPages,
+  ordersTotalPages,
+  fetchProducts,
+  searchProducts,
+  clearProductsSearch,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  fetchOrders,
+  searchOrders,
+  clearOrdersSearch,
+  createOrder,
+  updateOrder,
+  deleteOrder,
+  setupRealtimeSubscriptions,
+} = useProducts()
 
-// Sample products data
-const products = ref<Product[]>([
-  {
-    id: 1,
-    name: 'Fresh Strawberries',
-    category: 'Fruits',
-    price: 180,
-    stock: 50,
-    images: ['https://images.unsplash.com/photo-1464965911861-746a04b4bca6?w=400'],
-  },
-  {
-    id: 2,
-    name: 'Mixed Herbs Bundle',
-    category: 'Herbs',
-    price: 120,
-    stock: 30,
-    images: ['https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?w=400'],
-  },
-  {
-    id: 3,
-    name: 'Organic Tomatoes',
-    category: 'Vegetables',
-    price: 80,
-    stock: 0,
-    images: ['https://images.unsplash.com/photo-1546470427-e26264548ee3?w=400'],
-  },
-])
-
-// Sample orders data
-const orders = ref<Order[]>([
-  {
-    id: 1,
-    productName: 'Fresh Strawberries',
-    quantity: 5,
-    buyer: 'Maria Santos',
-    dateOrdered: '2025-01-15',
-    orderStatus: 'confirmed',
-  },
-  {
-    id: 2,
-    productName: 'Mixed Herbs Bundle',
-    quantity: 2,
-    buyer: 'John Rivera',
-    dateOrdered: '2025-01-14',
-    orderStatus: 'pending',
-  },
-])
-
-const adminTab = ref('products')
+// Dialog states
 const showProductDialog = ref(false)
 const showReserveDialog = ref(false)
-const editingProduct = ref<Product | null>(null)
-const selectedProduct = ref<Product | null>(null)
+const showDeleteDialog = ref(false)
+const selectedProduct = ref<any | null>(null)
+const editingProduct = ref<any | null>(null)
+const deleteTarget = ref<{ type: 'product' | 'order'; id: number } | null>(null)
+
+// Snackbar
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('success')
+
+const showSnackbar = (message: string, color: 'success' | 'error' | 'info' = 'success') => {
+  snackbarMessage.value = message
+  snackbarColor.value = color
+  snackbar.value = true
+}
+
+// Admin tab
+const adminTab = ref('products')
 
 const newProduct = ref({
   name: '',
   category: '',
+  description: '',
   price: 0,
   stock: 0,
 })
@@ -95,6 +81,17 @@ const imageFiles = ref<File[]>([])
 const imagePreviews = ref<string[]>([])
 
 const categories = ['Fruits', 'Vegetables', 'Herbs', 'Seeds', 'Other']
+
+// Load data on component mount
+onMounted(async () => {
+  if (props.userType === 'admin') {
+    await fetchProducts()
+    await fetchOrders()
+  } else {
+    await fetchProducts()
+  }
+  setupRealtimeSubscriptions()
+})
 
 // Image handling
 const handleImageSelect = (event: Event) => {
@@ -125,6 +122,7 @@ const handleAddProduct = () => {
   newProduct.value = {
     name: '',
     category: '',
+    description: '',
     price: 0,
     stock: 0,
   }
@@ -133,66 +131,121 @@ const handleAddProduct = () => {
   showProductDialog.value = true
 }
 
-const handleEditProduct = (product: Product) => {
+const handleEditProduct = (product: any) => {
   if (props.userType !== 'admin') return
   editingProduct.value = product
   newProduct.value = {
     name: product.name,
     category: product.category,
+    description: product.description || '',
     price: product.price,
     stock: product.stock,
   }
-  imagePreviews.value = [...product.images]
+  imagePreviews.value = product.images ? [...product.images] : []
   imageFiles.value = []
   showProductDialog.value = true
 }
 
-const handleSaveProduct = () => {
+const handleSaveProduct = async () => {
   if (props.userType !== 'admin') return
 
-  // TODO: Upload images to Supabase Storage
-  const images = imagePreviews.value.length > 0 ? imagePreviews.value : []
+  if (!newProduct.value.name || !newProduct.value.category || !newProduct.value.price) {
+    showSnackbar('Please fill in all required fields', 'error')
+    return
+  }
 
-  if (editingProduct.value) {
-    const index = products.value.findIndex((p) => p.id === editingProduct.value!.id)
-    if (index !== -1) {
-      products.value[index] = {
-        ...products.value[index],
-        ...newProduct.value,
-        images: images.length > 0 ? images : products.value[index].images,
-      }
+  try {
+    let result
+    if (editingProduct.value) {
+      result = await updateProduct(
+        editingProduct.value.id,
+        {
+          ...newProduct.value,
+          images: imagePreviews.value.filter((url) => url.startsWith('http')), // Keep existing URLs
+        },
+        imageFiles.value,
+      )
+    } else {
+      result = await createProduct(
+        {
+          ...newProduct.value,
+          images: [], // Will be updated by composable with uploaded images
+        },
+        imageFiles.value,
+      )
     }
-  } else {
-    const newId = Math.max(...products.value.map((p) => p.id), 0) + 1
-    products.value.unshift({
-      id: newId,
-      ...newProduct.value,
-      images,
-    })
-  }
-  showProductDialog.value = false
-}
 
-const handleDeleteProduct = (id: number) => {
-  if (props.userType !== 'admin') return
-  const index = products.value.findIndex((p) => p.id === id)
-  if (index !== -1) {
-    products.value.splice(index, 1)
+    if (result.success) {
+      showProductDialog.value = false
+      showSnackbar(
+        editingProduct.value ? 'Product updated successfully!' : 'Product created successfully!',
+        'success',
+      )
+    } else {
+      showSnackbar(result.error || 'Failed to save product', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
   }
 }
 
-const updateOrderStatus = (orderId: number, status: Order['orderStatus']) => {
-  const order = orders.value.find((o) => o.id === orderId)
-  if (order) {
-    order.orderStatus = status
+const confirmDelete = (type: 'product' | 'order', id: number) => {
+  deleteTarget.value = { type, id }
+  showDeleteDialog.value = true
+}
+
+const handleDelete = async () => {
+  if (!deleteTarget.value) return
+
+  try {
+    let result
+    if (deleteTarget.value.type === 'product') {
+      result = await deleteProduct(deleteTarget.value.id)
+    } else {
+      result = await deleteOrder(deleteTarget.value.id)
+    }
+
+    if (result.success) {
+      showDeleteDialog.value = false
+      showSnackbar(
+        `${deleteTarget.value.type.charAt(0).toUpperCase() + deleteTarget.value.type.slice(1)} deleted successfully!`,
+        'success',
+      )
+    } else {
+      showSnackbar(result.error || 'Failed to delete', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
+  }
+}
+
+const updateOrderStatus = async (
+  orderId: number,
+  status: 'pending' | 'confirmed' | 'completed' | 'cancelled',
+) => {
+  try {
+    const result = await updateOrder(orderId, { order_status: status })
+    if (result.success) {
+      showSnackbar(`Order ${status} successfully!`, 'success')
+    } else {
+      showSnackbar(result.error || 'Failed to update order status', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
   }
 }
 
 const downloadSalesHistory = () => {
-  // TODO: Generate and download CSV/Excel file
   const csvContent = [
-    ['Product Name', 'Quantity', 'Buyer', 'Date Ordered', 'Status'],
-    ...orders.value.map((o) => [o.productName, o.quantity, o.buyer, o.dateOrdered, o.orderStatus]),
+    ['Product Name', 'Quantity', 'Total Price', 'Buyer', 'Date Ordered', 'Status'],
+    ...orders.value.map((o) => [
+      o.product_name,
+      o.quantity,
+      o.total_price,
+      o.buyer_name,
+      o.created_at.split('T')[0],
+      o.order_status,
+    ]),
   ]
     .map((row) => row.join(','))
     .join('\n')
@@ -206,35 +259,40 @@ const downloadSalesHistory = () => {
 }
 
 // User functions
-const handleReserve = (product: Product) => {
+const handleReserve = (product: any) => {
   if (product.stock === 0) return
   selectedProduct.value = product
   reserveForm.value.quantity = 1
   showReserveDialog.value = true
 }
 
-const submitReservation = () => {
+const submitReservation = async () => {
   if (!selectedProduct.value) return
 
-  // TODO: Submit to Supabase
-  const newOrder: Order = {
-    id: Math.max(...orders.value.map((o) => o.id), 0) + 1,
-    productName: selectedProduct.value.name,
-    quantity: reserveForm.value.quantity,
-    buyer: 'Current User', // Replace with actual user name
-    dateOrdered: new Date().toISOString().split('T')[0],
-    orderStatus: 'pending',
+  if (reserveForm.value.quantity > selectedProduct.value.stock) {
+    showSnackbar('Quantity exceeds available stock', 'error')
+    return
   }
 
-  orders.value.unshift(newOrder)
+  try {
+    const totalPrice = selectedProduct.value.price * reserveForm.value.quantity
+    const result = await createOrder({
+      product_id: selectedProduct.value.id,
+      product_name: selectedProduct.value.name,
+      quantity: reserveForm.value.quantity,
+      total_price: totalPrice,
+      order_status: 'pending',
+    })
 
-  // Update stock
-  const product = products.value.find((p) => p.id === selectedProduct.value!.id)
-  if (product) {
-    product.stock -= reserveForm.value.quantity
+    if (result.success) {
+      showReserveDialog.value = false
+      showSnackbar('Order placed successfully!', 'success')
+    } else {
+      showSnackbar(result.error || 'Failed to place order', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
   }
-
-  showReserveDialog.value = false
 }
 
 const getStatusColor = (status: string) => {
@@ -253,11 +311,12 @@ const getStatusColor = (status: string) => {
 }
 
 const orderHeaders = [
-  { title: 'Product Name', key: 'productName' },
+  { title: 'Product Name', key: 'product_name' },
   { title: 'Quantity', key: 'quantity' },
-  { title: 'Buyer', key: 'buyer' },
-  { title: 'Date Ordered', key: 'dateOrdered' },
-  { title: 'Status', key: 'orderStatus' },
+  { title: 'Total Price', key: 'total_price' },
+  { title: 'Buyer', key: 'buyer_name' },
+  { title: 'Date Ordered', key: 'created_at' },
+  { title: 'Status', key: 'order_status' },
   { title: 'Actions', key: 'actions' },
 ]
 
@@ -333,7 +392,40 @@ const handleSettingsClick = () => {
               <v-card>
                 <v-card-title>Product Inventory</v-card-title>
                 <v-card-text>
-                  <v-data-table :headers="productHeaders" :items="products" item-value="id">
+                  <!-- Loading State -->
+                  <div v-if="loading" class="text-center py-12">
+                    <v-progress-circular
+                      indeterminate
+                      color="primary"
+                      size="64"
+                    ></v-progress-circular>
+                    <div class="text-h6 text-grey-darken-1 mt-4">Loading products...</div>
+                  </div>
+
+                  <!-- Empty State -->
+                  <div v-else-if="products.length === 0" class="text-center py-12">
+                    <v-icon
+                      icon="mdi-package-variant-closed-remove"
+                      size="80"
+                      color="grey-lighten-1"
+                    ></v-icon>
+                    <div class="text-h6 text-grey-darken-1 mt-4">No products yet</div>
+                    <div class="text-body-2 text-grey mt-2">
+                      Get started by adding your first product
+                    </div>
+                    <v-btn
+                      color="primary"
+                      variant="elevated"
+                      prepend-icon="mdi-plus"
+                      class="mt-4"
+                      @click="handleAddProduct"
+                    >
+                      Add Product
+                    </v-btn>
+                  </div>
+
+                  <!-- Products Table -->
+                  <v-data-table v-else :headers="productHeaders" :items="products" item-value="id">
                     <template v-slot:item.name="{ item }">
                       <div class="d-flex align-center">
                         <v-avatar size="60" rounded="lg" class="mr-3">
@@ -373,7 +465,7 @@ const handleSettingsClick = () => {
                         size="small"
                         variant="text"
                         color="error"
-                        @click="handleDeleteProduct(item.id)"
+                        @click="confirmDelete('product', item.id)"
                       ></v-btn>
                     </template>
                   </v-data-table>
@@ -400,14 +492,30 @@ const handleSettingsClick = () => {
               <v-card>
                 <v-card-title>Order History</v-card-title>
                 <v-card-text>
-                  <v-data-table :headers="orderHeaders" :items="orders" item-value="id">
-                    <template v-slot:item.orderStatus="{ item }">
-                      <v-chip
-                        :color="getStatusColor(item.orderStatus)"
-                        size="small"
-                        variant="tonal"
-                      >
-                        {{ item.orderStatus }}
+                  <!-- Loading State -->
+                  <div v-if="loading" class="text-center py-12">
+                    <v-progress-circular
+                      indeterminate
+                      color="primary"
+                      size="64"
+                    ></v-progress-circular>
+                    <div class="text-h6 text-grey-darken-1 mt-4">Loading orders...</div>
+                  </div>
+
+                  <!-- Empty State -->
+                  <div v-else-if="orders.length === 0" class="text-center py-12">
+                    <v-icon icon="mdi-cart-off" size="80" color="grey-lighten-1"></v-icon>
+                    <div class="text-h6 text-grey-darken-1 mt-4">No orders yet</div>
+                    <div class="text-body-2 text-grey mt-2">
+                      Orders will appear here when users make purchases
+                    </div>
+                  </div>
+
+                  <!-- Orders Table -->
+                  <v-data-table v-else :headers="orderHeaders" :items="orders" item-value="id">
+                    <template v-slot:item.order_status="{ item }">
+                      <v-chip :color="getStatusColor(item.order_status)" class="text-capitalize">
+                        {{ item.order_status }}
                       </v-chip>
                     </template>
 
@@ -448,7 +556,27 @@ const handleSettingsClick = () => {
 
     <!-- User View: Product Cards -->
     <template v-if="userType === 'user'">
-      <v-row>
+      <!-- Loading State -->
+      <div v-if="loading" class="text-center py-12">
+        <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
+        <div class="text-h6 text-grey-darken-1 mt-4">Loading products...</div>
+      </div>
+
+      <!-- Empty State -->
+      <div v-else-if="products.length === 0" class="text-center py-12">
+        <v-card class="pa-12">
+          <v-icon
+            icon="mdi-package-variant-closed-remove"
+            size="120"
+            color="grey-lighten-1"
+          ></v-icon>
+          <div class="text-h5 text-grey-darken-1 mt-6">No products available yet</div>
+          <div class="text-body-1 text-grey mt-2">Check back later for fresh farm products</div>
+        </v-card>
+      </div>
+
+      <!-- Products Grid -->
+      <v-row v-else>
         <v-col v-for="product in products" :key="product.id" cols="12" sm="6" md="4" lg="3">
           <v-card class="fill-height">
             <v-carousel
@@ -639,6 +767,30 @@ const handleSettingsClick = () => {
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Delete Confirmation Dialog -->
+    <v-dialog v-model="showDeleteDialog" max-width="400px">
+      <v-card>
+        <v-card-title>Confirm Delete</v-card-title>
+        <v-card-text>
+          Are you sure you want to delete this {{ deleteTarget?.type }}? This action cannot be
+          undone.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="outlined" @click="showDeleteDialog = false">Cancel</v-btn>
+          <v-btn color="error" variant="elevated" @click="handleDelete">Delete</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Snackbar for notifications -->
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
+      {{ snackbarMessage }}
+      <template v-slot:actions>
+        <v-btn variant="text" @click="snackbar = false">Close</v-btn>
+      </template>
+    </v-snackbar>
   </div>
 </template>
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useTrainings } from '../composables/useTrainings'
 import HeaderActions from './shared/HeaderActions.vue'
 
 interface Props {
@@ -14,98 +15,65 @@ const authStore = useAuthStore()
 const userName = computed(() => authStore.fullName)
 const userEmail = computed(() => authStore.userEmail)
 
-interface Training {
-  id: number
-  name: string
-  location: string
-  startDateTime: string
-  endDateTime: string
-  topics: string[]
-  image: string
-}
-
-interface Registration {
-  id: number
-  trainingName: string
-  userName: string
-  userEmail: string
-  registeredAt: string
-  status: 'confirmed' | 'pending' | 'cancelled'
-}
-
-// Sample data
-const trainings = ref<Training[]>([
-  {
-    id: 1,
-    name: 'Organic Farming Fundamentals',
-    location: 'Training Center A',
-    startDateTime: '2025-02-01T09:00',
-    endDateTime: '2025-02-01T17:00',
-    topics: ['Soil Health', 'Composting', 'Pest Management', 'Crop Rotation'],
-    image: 'https://images.unsplash.com/photo-1574943320219-553eb213f72d?w=400',
-  },
-  {
-    id: 2,
-    name: 'Greenhouse Management',
-    location: 'Greenhouse Complex',
-    startDateTime: '2025-03-15T08:00',
-    endDateTime: '2025-03-16T16:00',
-    topics: ['Climate Control', 'Irrigation Systems', 'Crop Selection', 'Disease Prevention'],
-    image: 'https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?w=400',
-  },
-  {
-    id: 3,
-    name: 'Sustainable Agriculture Practices',
-    location: 'Main Field',
-    startDateTime: '2024-12-10T10:00',
-    endDateTime: '2024-12-10T15:00',
-    topics: ['Water Conservation', 'Renewable Energy', 'Biodiversity'],
-    image: 'https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=400',
-  },
-  {
-    id: 4,
-    name: 'Hydroponics Workshop',
-    location: 'Innovation Lab',
-    startDateTime: '2025-01-18T09:00',
-    endDateTime: '2025-01-18T16:00',
-    topics: ['Nutrient Solutions', 'System Setup', 'pH Management'],
-    image: 'https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?w=400',
-  },
-])
-
-const registrations = ref<Registration[]>([
-  {
-    id: 1,
-    trainingName: 'Organic Farming Fundamentals',
-    userName: 'Maria Santos',
-    userEmail: 'maria@email.com',
-    registeredAt: '2025-01-15',
-    status: 'confirmed',
-  },
-  {
-    id: 2,
-    trainingName: 'Greenhouse Management',
-    userName: 'Juan Rivera',
-    userEmail: 'juan@email.com',
-    registeredAt: '2025-01-20',
-    status: 'pending',
-  },
-])
+// Use trainings composable
+const {
+  trainings,
+  registrations,
+  loading,
+  error,
+  trainingsTotal,
+  registrationsTotal,
+  trainingsPage,
+  registrationsPage,
+  itemsPerPage,
+  trainingsTotalPages,
+  registrationsTotalPages,
+  fetchTrainings,
+  searchTrainings,
+  clearTrainingsSearch,
+  createTraining,
+  updateTraining,
+  deleteTraining,
+  fetchRegistrations,
+  searchRegistrations,
+  clearRegistrationsSearch,
+  createRegistration,
+  updateRegistration,
+  deleteRegistration,
+  setupRealtimeSubscriptions,
+} = useTrainings()
 
 // Dialog states
 const showTrainingDialog = ref(false)
 const showRegisterDialog = ref(false)
-const selectedTraining = ref<Training | null>(null)
-const editingTraining = ref<Training | null>(null)
+const showDeleteDialog = ref(false)
+const selectedTraining = ref<any | null>(null)
+const editingTraining = ref<any | null>(null)
+const deleteTarget = ref<{ type: 'training' | 'registration'; id: number } | null>(null)
+
+// Snackbar
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('success')
+
+const showSnackbar = (message: string, color: 'success' | 'error' | 'info' = 'success') => {
+  snackbarMessage.value = message
+  snackbarColor.value = color
+  snackbar.value = true
+}
+
+// View filter and admin tab
 const viewFilter = ref<'upcoming' | 'current' | 'past'>('upcoming')
 const adminTab = ref('trainings')
 
 // Forms
 const newTraining = ref({
   name: '',
+  description: '',
   location: '',
-  startDateTime: '',
-  endDateTime: '',
+  start_date_time: '',
+  end_date_time: '',
+  capacity: 0,
   topics: [] as string[],
 })
 
@@ -113,21 +81,28 @@ const topicInput = ref('')
 const imageFile = ref<File | null>(null)
 const imagePreview = ref<string | null>(null)
 
+// Load data on component mount
+onMounted(async () => {
+  if (props.userType === 'admin') {
+    await fetchTrainings()
+    await fetchRegistrations()
+  } else {
+    await fetchTrainings()
+  }
+  setupRealtimeSubscriptions()
+})
+
 // Computed filtered trainings
 const filteredTrainings = computed(() => {
   const now = new Date()
-
   return trainings.value.filter((training) => {
-    const start = new Date(training.startDateTime)
-    const end = new Date(training.endDateTime)
+    const startDate = new Date(training.start_date_time)
+    const endDate = new Date(training.end_date_time)
 
-    if (viewFilter.value === 'upcoming') {
-      return start > now
-    } else if (viewFilter.value === 'current') {
-      return start <= now && end >= now
-    } else {
-      return end < now
-    }
+    if (viewFilter.value === 'upcoming') return startDate > now
+    if (viewFilter.value === 'current') return startDate <= now && endDate >= now
+    if (viewFilter.value === 'past') return endDate < now
+    return true
   })
 })
 
@@ -135,12 +110,11 @@ const filteredTrainings = computed(() => {
 const formatDateTime = (dateTime: string) => {
   const date = new Date(dateTime)
   return date.toLocaleString('en-US', {
+    year: 'numeric',
     month: 'short',
     day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
+    hour: '2-digit',
     minute: '2-digit',
-    hour12: true,
   })
 }
 
@@ -148,7 +122,6 @@ const formatDateTime = (dateTime: string) => {
 const handleImageSelect = (event: Event) => {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
-
   if (file) {
     imageFile.value = file
     const reader = new FileReader()
@@ -178,80 +151,141 @@ const removeTopic = (index: number) => {
 
 // Admin functions
 const handleAddTraining = () => {
+  if (props.userType !== 'admin') return
   editingTraining.value = null
   newTraining.value = {
     name: '',
+    description: '',
     location: '',
-    startDateTime: '',
-    endDateTime: '',
+    start_date_time: '',
+    end_date_time: '',
+    capacity: 0,
     topics: [],
   }
   imageFile.value = null
   imagePreview.value = null
-  topicInput.value = ''
   showTrainingDialog.value = true
 }
 
-const handleEditTraining = (training: Training) => {
+const handleEditTraining = (training: any) => {
+  if (props.userType !== 'admin') return
   editingTraining.value = training
   newTraining.value = {
     name: training.name,
+    description: training.description || '',
     location: training.location,
-    startDateTime: training.startDateTime,
-    endDateTime: training.endDateTime,
+    start_date_time: training.start_date_time,
+    end_date_time: training.end_date_time,
+    capacity: training.capacity,
     topics: [...training.topics],
   }
-  imagePreview.value = training.image
+  imagePreview.value = training.image_url
   imageFile.value = null
   showTrainingDialog.value = true
 }
 
-const handleSaveTraining = () => {
-  const image =
-    imagePreview.value || 'https://images.unsplash.com/photo-1574943320219-553eb213f72d?w=400'
+const handleSaveTraining = async () => {
+  if (props.userType !== 'admin') return
 
-  if (editingTraining.value) {
-    const index = trainings.value.findIndex((t) => t.id === editingTraining.value!.id)
-    if (index !== -1) {
-      trainings.value[index] = {
-        ...trainings.value[index],
-        ...newTraining.value,
-        image,
-      }
+  if (
+    !newTraining.value.name ||
+    !newTraining.value.location ||
+    !newTraining.value.start_date_time ||
+    !newTraining.value.end_date_time
+  ) {
+    showSnackbar('Please fill in all required fields', 'error')
+    return
+  }
+
+  try {
+    let result
+    if (editingTraining.value) {
+      result = await updateTraining(
+        editingTraining.value.id,
+        {
+          ...newTraining.value,
+          image_url: imagePreview.value,
+        },
+        imageFile.value,
+      )
+    } else {
+      result = await createTraining(
+        {
+          ...newTraining.value,
+          image_url: null,
+        },
+        imageFile.value,
+      )
     }
-  } else {
-    const newId = Math.max(...trainings.value.map((t) => t.id), 0) + 1
-    trainings.value.unshift({
-      id: newId,
-      ...newTraining.value,
-      image,
-    })
-  }
-  showTrainingDialog.value = false
-}
 
-const handleDeleteTraining = (id: number) => {
-  const index = trainings.value.findIndex((t) => t.id === id)
-  if (index !== -1) {
-    trainings.value.splice(index, 1)
+    if (result.success) {
+      showTrainingDialog.value = false
+      showSnackbar(
+        editingTraining.value ? 'Training updated successfully!' : 'Training created successfully!',
+        'success',
+      )
+    } else {
+      showSnackbar(result.error || 'Failed to save training', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
   }
 }
 
-const updateRegistrationStatus = (registrationId: number, status: Registration['status']) => {
-  const registration = registrations.value.find((r) => r.id === registrationId)
-  if (registration) {
-    registration.status = status
+const confirmDelete = (type: 'training' | 'registration', id: number) => {
+  deleteTarget.value = { type, id }
+  showDeleteDialog.value = true
+}
+
+const handleDelete = async () => {
+  if (!deleteTarget.value) return
+
+  try {
+    let result
+    if (deleteTarget.value.type === 'training') {
+      result = await deleteTraining(deleteTarget.value.id)
+    } else {
+      result = await deleteRegistration(deleteTarget.value.id)
+    }
+
+    if (result.success) {
+      showDeleteDialog.value = false
+      showSnackbar(
+        `${deleteTarget.value.type.charAt(0).toUpperCase() + deleteTarget.value.type.slice(1)} deleted successfully!`,
+        'success',
+      )
+    } else {
+      showSnackbar(result.error || 'Failed to delete', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
+  }
+}
+
+const updateRegistrationStatus = async (
+  registrationId: number,
+  status: 'pending' | 'confirmed' | 'cancelled',
+) => {
+  try {
+    const result = await updateRegistration(registrationId, { status })
+    if (result.success) {
+      showSnackbar(`Registration ${status} successfully!`, 'success')
+    } else {
+      showSnackbar(result.error || 'Failed to update registration', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
   }
 }
 
 const downloadRegistrations = () => {
   const csvContent = [
-    ['Training Name', 'User Name', 'Email', 'Registered At', 'Status'],
+    ['Training Name', 'Participant', 'Email', 'Registered Date', 'Status'],
     ...registrations.value.map((r) => [
-      r.trainingName,
-      r.userName,
-      r.userEmail,
-      r.registeredAt,
+      r.training_name,
+      r.user_name,
+      r.user_email,
+      new Date(r.created_at).toLocaleDateString(),
       r.status,
     ]),
   ]
@@ -267,33 +301,38 @@ const downloadRegistrations = () => {
 }
 
 // User functions
-const openRegisterDialog = (training: Training) => {
+const openRegisterDialog = (training: any) => {
   selectedTraining.value = training
   showRegisterDialog.value = true
 }
 
-const confirmRegistration = () => {
+const confirmRegistration = async () => {
   if (!selectedTraining.value) return
 
-  const newRegistration: Registration = {
-    id: Math.max(...registrations.value.map((r) => r.id), 0) + 1,
-    trainingName: selectedTraining.value.name,
-    userName: userName.value,
-    userEmail: userEmail.value,
-    registeredAt: new Date().toISOString().split('T')[0],
-    status: 'pending',
-  }
+  try {
+    const result = await createRegistration({
+      training_id: selectedTraining.value.id,
+      training_name: selectedTraining.value.name,
+      status: 'pending',
+    })
 
-  registrations.value.unshift(newRegistration)
-  showRegisterDialog.value = false
+    if (result.success) {
+      showRegisterDialog.value = false
+      showSnackbar('Registration submitted successfully!', 'success')
+    } else {
+      showSnackbar(result.error || 'Failed to register', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
+  }
 }
 
 const getStatusColor = (status: string) => {
   switch (status) {
-    case 'pending':
-      return 'warning'
     case 'confirmed':
       return 'success'
+    case 'pending':
+      return 'warning'
     case 'cancelled':
       return 'error'
     default:
@@ -302,23 +341,29 @@ const getStatusColor = (status: string) => {
 }
 
 const registrationHeaders = [
-  { title: 'Training Name', key: 'trainingName' },
-  { title: 'User Name', key: 'userName' },
-  { title: 'Email', key: 'userEmail' },
-  { title: 'Registered At', key: 'registeredAt' },
+  { title: 'Training Name', key: 'training_name' },
+  { title: 'Participant', key: 'user_name' },
+  { title: 'Email', key: 'user_email' },
+  { title: 'Registered Date', key: 'created_at' },
   { title: 'Status', key: 'status' },
   { title: 'Actions', key: 'actions' },
 ]
 
 const pageSubtitle = computed(() =>
   props.userType === 'admin'
-    ? 'Manage training programs and registrations'
-    : 'Enhance your farming skills with expert-led programs',
+    ? 'Manage training sessions and registrations'
+    : 'Browse and register for upcoming trainings',
 )
 
-const handleSearch = (query: string) => {
-  console.log('Search query:', query)
-  // Implement your search logic here
+const handleSearch = async (query: string) => {
+  if (adminTab.value === 'trainings') {
+    await searchTrainings(query)
+  } else if (adminTab.value === 'registrations') {
+    await searchRegistrations(query)
+  } else {
+    // For user view, search trainings
+    await searchTrainings(query)
+  }
 }
 
 const handleSettingsClick = () => {
@@ -334,7 +379,7 @@ const handleSettingsClick = () => {
       <v-col cols="12" class="d-flex align-center justify-space-between">
         <div>
           <h1 class="text-h4 font-weight-bold text-primary mb-2">
-            {{ userType === 'admin' ? 'Training & Workshop Management' : 'Trainings & Workshops' }}
+            {{ userType === 'admin' ? 'Training Management' : 'Trainings & Workshops' }}
           </h1>
           <p class="text-h6 text-grey-darken-1">
             {{ pageSubtitle }}
@@ -349,24 +394,18 @@ const handleSettingsClick = () => {
       </v-col>
     </v-row>
 
-    <!-- Admin Tabs -->
-    <v-tabs v-if="userType === 'admin'" v-model="adminTab" bg-color="primary" class="mb-6">
-      <v-tab value="trainings">Trainings</v-tab>
-      <v-tab value="registrations">Registrations</v-tab>
-    </v-tabs>
-
     <!-- Admin View -->
     <template v-if="userType === 'admin'">
+      <v-tabs v-model="adminTab" bg-color="primary" class="mb-6">
+        <v-tab value="trainings">Training Sessions</v-tab>
+        <v-tab value="registrations">Registrations</v-tab>
+      </v-tabs>
+
       <v-window v-model="adminTab">
         <!-- Trainings Tab -->
         <v-window-item value="trainings">
-          <v-row class="mb-4">
-            <v-col cols="12" class="d-flex justify-space-between align-center">
-              <v-btn-toggle v-model="viewFilter" color="primary" variant="outlined" mandatory>
-                <v-btn value="upcoming">Upcoming</v-btn>
-                <v-btn value="current">Current</v-btn>
-                <v-btn value="past">Past</v-btn>
-              </v-btn-toggle>
+          <v-row>
+            <v-col cols="12" class="d-flex justify-end mb-4">
               <v-btn
                 color="primary"
                 variant="elevated"
@@ -376,80 +415,112 @@ const handleSettingsClick = () => {
                 Add Training
               </v-btn>
             </v-col>
-          </v-row>
-
-          <v-row>
-            <v-col v-for="training in filteredTrainings" :key="training.id" cols="12" md="6" lg="4">
-              <v-card class="fill-height">
-                <v-img :src="training.image" height="200" cover></v-img>
-
-                <v-card-title>{{ training.name }}</v-card-title>
-
-                <v-card-text>
-                  <div class="mb-3">
-                    <div class="d-flex align-center mb-2">
-                      <v-icon icon="mdi-map-marker" size="small" class="mr-2"></v-icon>
-                      <span class="text-body-2">{{ training.location }}</span>
-                    </div>
-
-                    <div class="d-flex align-center mb-2">
-                      <v-icon icon="mdi-calendar-start" size="small" class="mr-2"></v-icon>
-                      <span class="text-body-2">{{ formatDateTime(training.startDateTime) }}</span>
-                    </div>
-
-                    <div class="d-flex align-center">
-                      <v-icon icon="mdi-calendar-end" size="small" class="mr-2"></v-icon>
-                      <span class="text-body-2">{{ formatDateTime(training.endDateTime) }}</span>
-                    </div>
-                  </div>
-
-                  <v-divider class="my-3"></v-divider>
-
-                  <div>
-                    <div class="text-caption text-grey-darken-1 mb-2">Topics Covered:</div>
-                    <div class="d-flex flex-wrap gap-1">
-                      <v-chip
-                        v-for="(topic, index) in training.topics"
-                        :key="index"
-                        size="small"
-                        variant="tonal"
-                        color="primary"
-                      >
-                        {{ topic }}
-                      </v-chip>
-                    </div>
-                  </div>
-                </v-card-text>
-
-                <v-card-actions>
-                  <v-btn
-                    icon="mdi-pencil"
-                    variant="text"
-                    color="primary"
-                    @click="handleEditTraining(training)"
-                  ></v-btn>
-                  <v-btn
-                    icon="mdi-delete"
-                    variant="text"
-                    color="error"
-                    @click="handleDeleteTraining(training.id)"
-                  ></v-btn>
-                </v-card-actions>
-              </v-card>
-            </v-col>
-
-            <v-col v-if="filteredTrainings.length === 0" cols="12">
+            <v-col cols="12">
               <v-card>
-                <v-card-text class="text-center py-12">
-                  <v-icon
-                    icon="mdi-calendar-blank"
-                    size="64"
-                    color="grey-lighten-1"
-                    class="mb-4"
-                  ></v-icon>
-                  <div class="text-h6 text-grey-darken-1">
-                    No {{ viewFilter }} trainings available
+                <v-card-title>Training Sessions</v-card-title>
+                <v-card-text>
+                  <!-- Loading State -->
+                  <div v-if="loading" class="text-center py-12">
+                    <v-progress-circular
+                      indeterminate
+                      color="primary"
+                      size="64"
+                    ></v-progress-circular>
+                    <div class="text-h6 text-grey-darken-1 mt-4">Loading trainings...</div>
                   </div>
+
+                  <!-- Empty State -->
+                  <div v-else-if="trainings.length === 0" class="text-center py-12">
+                    <v-icon icon="mdi-school-outline" size="80" color="grey-lighten-1"></v-icon>
+                    <div class="text-h6 text-grey-darken-1 mt-4">No trainings yet</div>
+                    <div class="text-body-2 text-grey mt-2">
+                      Get started by creating your first training session
+                    </div>
+                    <v-btn
+                      color="primary"
+                      variant="elevated"
+                      prepend-icon="mdi-plus"
+                      class="mt-4"
+                      @click="handleAddTraining"
+                    >
+                      Add Training
+                    </v-btn>
+                  </div>
+
+                  <!-- Trainings Grid -->
+                  <v-row v-else>
+                    <v-col v-for="training in trainings" :key="training.id" cols="12" sm="6" md="4">
+                      <v-card class="fill-height">
+                        <v-img
+                          v-if="training.image_url"
+                          :src="training.image_url"
+                          height="200"
+                          cover
+                        ></v-img>
+                        <div
+                          v-else
+                          class="bg-grey-lighten-3 d-flex align-center justify-center"
+                          style="height: 200px"
+                        >
+                          <v-icon
+                            icon="mdi-school-outline"
+                            size="64"
+                            color="grey-lighten-1"
+                          ></v-icon>
+                        </div>
+
+                        <v-card-title class="text-h6">{{ training.name }}</v-card-title>
+
+                        <v-card-text>
+                          <div class="mb-3">
+                            <v-icon icon="mdi-map-marker" size="small" class="mr-1"></v-icon>
+                            <span class="text-body-2">{{ training.location }}</span>
+                          </div>
+
+                          <div class="mb-3">
+                            <v-icon icon="mdi-clock-outline" size="small" class="mr-1"></v-icon>
+                            <span class="text-body-2">{{
+                              formatDateTime(training.start_date_time)
+                            }}</span>
+                          </div>
+
+                          <div class="mb-3">
+                            <v-icon icon="mdi-account-group" size="small" class="mr-1"></v-icon>
+                            <span class="text-body-2">Capacity: {{ training.capacity }}</span>
+                          </div>
+
+                          <div class="d-flex flex-wrap gap-2">
+                            <v-chip
+                              v-for="(topic, index) in training.topics"
+                              :key="index"
+                              size="small"
+                              variant="tonal"
+                              color="primary"
+                            >
+                              {{ topic }}
+                            </v-chip>
+                          </div>
+                        </v-card-text>
+
+                        <v-card-actions>
+                          <v-btn
+                            icon="mdi-pencil"
+                            size="small"
+                            variant="text"
+                            color="primary"
+                            @click="handleEditTraining(training)"
+                          ></v-btn>
+                          <v-btn
+                            icon="mdi-delete"
+                            size="small"
+                            variant="text"
+                            color="error"
+                            @click="confirmDelete('training', training.id)"
+                          ></v-btn>
+                        </v-card-actions>
+                      </v-card>
+                    </v-col>
+                  </v-row>
                 </v-card-text>
               </v-card>
             </v-col>
@@ -466,18 +537,47 @@ const handleSettingsClick = () => {
                 prepend-icon="mdi-download"
                 @click="downloadRegistrations"
               >
-                View All Registrations
+                Export Registrations
               </v-btn>
             </v-col>
             <v-col cols="12">
               <v-card>
-                <v-card-title>Training Registrations</v-card-title>
+                <v-card-title>Registration List</v-card-title>
                 <v-card-text>
+                  <!-- Loading State -->
+                  <div v-if="loading" class="text-center py-12">
+                    <v-progress-circular
+                      indeterminate
+                      color="primary"
+                      size="64"
+                    ></v-progress-circular>
+                    <div class="text-h6 text-grey-darken-1 mt-4">Loading registrations...</div>
+                  </div>
+
+                  <!-- Empty State -->
+                  <div v-else-if="registrations.length === 0" class="text-center py-12">
+                    <v-icon
+                      icon="mdi-account-multiple-outline"
+                      size="80"
+                      color="grey-lighten-1"
+                    ></v-icon>
+                    <div class="text-h6 text-grey-darken-1 mt-4">No registrations yet</div>
+                    <div class="text-body-2 text-grey mt-2">
+                      Registrations will appear here when users sign up for trainings
+                    </div>
+                  </div>
+
+                  <!-- Registrations Table -->
                   <v-data-table
+                    v-else
                     :headers="registrationHeaders"
                     :items="registrations"
                     item-value="id"
                   >
+                    <template v-slot:item.created_at="{ item }">
+                      {{ new Date(item.created_at).toLocaleDateString() }}
+                    </template>
+
                     <template v-slot:item.status="{ item }">
                       <v-chip :color="getStatusColor(item.status)" size="small" variant="tonal">
                         {{ item.status }}
@@ -503,6 +603,10 @@ const handleSettingsClick = () => {
                             title="Cancel"
                             @click="updateRegistrationStatus(item.id, 'cancelled')"
                           ></v-list-item>
+                          <v-list-item
+                            title="Delete"
+                            @click="confirmDelete('registration', item.id)"
+                          ></v-list-item>
                         </v-list>
                       </v-menu>
                     </template>
@@ -517,7 +621,7 @@ const handleSettingsClick = () => {
 
     <!-- User View -->
     <template v-else>
-      <!-- Filter Tabs -->
+      <!-- Filter Buttons -->
       <v-row class="mb-4">
         <v-col cols="12">
           <v-btn-toggle v-model="viewFilter" color="primary" variant="outlined" mandatory>
@@ -528,37 +632,64 @@ const handleSettingsClick = () => {
         </v-col>
       </v-row>
 
-      <!-- Training Cards -->
-      <v-row>
-        <v-col v-for="training in filteredTrainings" :key="training.id" cols="12" md="6" lg="4">
-          <v-card class="fill-height">
-            <v-img :src="training.image" height="200" cover></v-img>
+      <!-- Loading State -->
+      <div v-if="loading" class="text-center py-12">
+        <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
+        <div class="text-h6 text-grey-darken-1 mt-4">Loading trainings...</div>
+      </div>
 
-            <v-card-title>{{ training.name }}</v-card-title>
+      <!-- Empty State -->
+      <div v-else-if="filteredTrainings.length === 0" class="text-center py-12">
+        <v-card class="pa-12">
+          <v-icon icon="mdi-school-outline" size="120" color="grey-lighten-1"></v-icon>
+          <div class="text-h5 text-grey-darken-1 mt-6">No {{ viewFilter }} trainings</div>
+          <div class="text-body-1 text-grey mt-2">Check back later for new training sessions</div>
+        </v-card>
+      </div>
+
+      <!-- Training Cards -->
+      <v-row v-else>
+        <v-col v-for="training in filteredTrainings" :key="training.id" cols="12" sm="6" md="4">
+          <v-card class="fill-height">
+            <v-img v-if="training.image_url" :src="training.image_url" height="200" cover></v-img>
+            <div
+              v-else
+              class="bg-grey-lighten-3 d-flex align-center justify-center"
+              style="height: 200px"
+            >
+              <v-icon icon="mdi-school-outline" size="64" color="grey-lighten-1"></v-icon>
+            </div>
+
+            <v-card-title class="text-h6">{{ training.name }}</v-card-title>
 
             <v-card-text>
-              <div class="mb-3">
-                <div class="d-flex align-center mb-2">
-                  <v-icon icon="mdi-map-marker" size="small" class="mr-2"></v-icon>
-                  <span class="text-body-2">{{ training.location }}</span>
-                </div>
-
-                <div class="d-flex align-center mb-2">
-                  <v-icon icon="mdi-calendar-start" size="small" class="mr-2"></v-icon>
-                  <span class="text-body-2">{{ formatDateTime(training.startDateTime) }}</span>
-                </div>
-
-                <div class="d-flex align-center">
-                  <v-icon icon="mdi-calendar-end" size="small" class="mr-2"></v-icon>
-                  <span class="text-body-2">{{ formatDateTime(training.endDateTime) }}</span>
-                </div>
+              <div v-if="training.description" class="text-body-2 mb-3">
+                {{ training.description }}
               </div>
 
-              <v-divider class="my-3"></v-divider>
+              <div class="mb-2">
+                <v-icon icon="mdi-map-marker" size="small" class="mr-1"></v-icon>
+                <span class="text-body-2">{{ training.location }}</span>
+              </div>
 
-              <div>
-                <div class="text-caption text-grey-darken-1 mb-2">Topics Covered:</div>
-                <div class="d-flex flex-wrap gap-1">
+              <div class="mb-2">
+                <v-icon icon="mdi-calendar" size="small" class="mr-1"></v-icon>
+                <span class="text-body-2">{{ formatDateTime(training.start_date_time) }}</span>
+              </div>
+
+              <div class="mb-3">
+                <v-icon icon="mdi-clock-outline" size="small" class="mr-1"></v-icon>
+                <span class="text-body-2">{{ formatDateTime(training.end_date_time) }}</span>
+              </div>
+
+              <div class="mb-3">
+                <v-icon icon="mdi-account-group" size="small" class="mr-1"></v-icon>
+                <span class="text-body-2">Capacity: {{ training.capacity }} participants</span>
+              </div>
+
+              <div class="mb-3">
+                <div class="text-caption text-grey mb-2">Topics Covered:</div>
+                <div class="d-flex flex-wrap gap-2">
                   <v-chip
                     v-for="(topic, index) in training.topics"
                     :key="index"
@@ -579,122 +710,129 @@ const handleSettingsClick = () => {
             </v-card-actions>
           </v-card>
         </v-col>
-
-        <v-col v-if="filteredTrainings.length === 0" cols="12">
-          <v-card>
-            <v-card-text class="text-center py-12">
-              <v-icon
-                icon="mdi-calendar-blank"
-                size="64"
-                color="grey-lighten-1"
-                class="mb-4"
-              ></v-icon>
-              <div class="text-h6 text-grey-darken-1">No {{ viewFilter }} trainings available</div>
-            </v-card-text>
-          </v-card>
-        </v-col>
       </v-row>
     </template>
 
-    <!-- Admin Registrations Dialog -->
-    <v-dialog v-if="userType === 'admin'" v-model="showTrainingDialog" max-width="700px">
+    <!-- Training Dialog (Admin) -->
+    <v-dialog v-if="userType === 'admin'" v-model="showTrainingDialog" max-width="800px">
       <v-card>
-        <v-card-title>
-          {{ editingTraining ? 'Edit Training' : 'New Training' }}
-        </v-card-title>
+        <v-card-title>{{ editingTraining ? 'Edit Training' : 'Add New Training' }}</v-card-title>
         <v-card-text>
-          <v-form @submit.prevent="handleSaveTraining">
-            <v-row>
-              <!-- Image Upload -->
-              <v-col cols="12">
-                <div class="text-subtitle-2 mb-2">Training Image</div>
+          <v-row>
+            <v-col cols="12">
+              <v-text-field
+                v-model="newTraining.name"
+                label="Training Name *"
+                variant="outlined"
+                required
+              ></v-text-field>
+            </v-col>
 
-                <div v-if="imagePreview" class="mb-4 position-relative">
-                  <v-img :src="imagePreview" max-height="200" class="rounded"></v-img>
-                  <v-btn
-                    icon="mdi-close"
-                    size="small"
-                    color="error"
-                    class="position-absolute"
-                    style="top: 8px; right: 8px"
-                    @click="handleRemoveImage"
-                  ></v-btn>
-                </div>
+            <v-col cols="12">
+              <v-textarea
+                v-model="newTraining.description"
+                label="Description"
+                variant="outlined"
+                rows="3"
+              ></v-textarea>
+            </v-col>
 
-                <v-file-input
-                  v-else
-                  accept="image/*"
-                  label="Upload Image"
-                  prepend-icon="mdi-camera"
-                  variant="outlined"
-                  @change="handleImageSelect"
-                ></v-file-input>
-              </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field
+                v-model="newTraining.location"
+                label="Location *"
+                variant="outlined"
+                required
+              ></v-text-field>
+            </v-col>
 
-              <v-col cols="12">
-                <v-text-field
-                  v-model="newTraining.name"
-                  label="Training Name *"
-                  variant="outlined"
-                  required
-                ></v-text-field>
-              </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field
+                v-model.number="newTraining.capacity"
+                label="Capacity"
+                type="number"
+                variant="outlined"
+                min="0"
+              ></v-text-field>
+            </v-col>
 
-              <v-col cols="12">
-                <v-text-field
-                  v-model="newTraining.location"
-                  label="Location *"
-                  variant="outlined"
-                  required
-                ></v-text-field>
-              </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field
+                v-model="newTraining.start_date_time"
+                label="Start Date & Time *"
+                type="datetime-local"
+                variant="outlined"
+                required
+              ></v-text-field>
+            </v-col>
 
-              <v-col cols="12" md="6">
-                <v-text-field
-                  v-model="newTraining.startDateTime"
-                  label="Start Date & Time *"
-                  type="datetime-local"
-                  variant="outlined"
-                  required
-                ></v-text-field>
-              </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field
+                v-model="newTraining.end_date_time"
+                label="End Date & Time *"
+                type="datetime-local"
+                variant="outlined"
+                required
+              ></v-text-field>
+            </v-col>
 
-              <v-col cols="12" md="6">
-                <v-text-field
-                  v-model="newTraining.endDateTime"
-                  label="End Date & Time *"
-                  type="datetime-local"
-                  variant="outlined"
-                  required
-                ></v-text-field>
-              </v-col>
-
-              <v-col cols="12">
-                <div class="text-subtitle-2 mb-2">Topics *</div>
-                <div class="d-flex gap-2 mb-2">
+            <v-col cols="12">
+              <div class="mb-2">
+                <label class="text-body-2 font-weight-medium">Topics Covered</label>
+              </div>
+              <v-row no-gutters>
+                <v-col cols="9" class="pr-2">
                   <v-text-field
                     v-model="topicInput"
-                    label="Add Topic"
+                    placeholder="Enter topic"
                     variant="outlined"
                     density="compact"
-                    hide-details
                     @keyup.enter="addTopic"
                   ></v-text-field>
-                  <v-btn color="primary" @click="addTopic">Add</v-btn>
-                </div>
-                <div class="d-flex flex-wrap gap-2">
-                  <v-chip
-                    v-for="(topic, index) in newTraining.topics"
-                    :key="index"
-                    closable
-                    @click:close="removeTopic(index)"
-                  >
-                    {{ topic }}
-                  </v-chip>
-                </div>
-              </v-col>
-            </v-row>
-          </v-form>
+                </v-col>
+                <v-col cols="3">
+                  <v-btn color="primary" variant="elevated" block @click="addTopic">
+                    Add Topic
+                  </v-btn>
+                </v-col>
+              </v-row>
+              <div class="d-flex flex-wrap gap-2 mt-2">
+                <v-chip
+                  v-for="(topic, index) in newTraining.topics"
+                  :key="index"
+                  closable
+                  @click:close="removeTopic(index)"
+                >
+                  {{ topic }}
+                </v-chip>
+              </div>
+            </v-col>
+
+            <v-col cols="12">
+              <div class="mb-2">
+                <label class="text-body-2 font-weight-medium">Training Image</label>
+              </div>
+              <v-file-input
+                label="Upload Image"
+                variant="outlined"
+                accept="image/*"
+                prepend-icon="mdi-camera"
+                @change="handleImageSelect"
+              ></v-file-input>
+
+              <div v-if="imagePreview" class="mt-4 position-relative">
+                <v-img :src="imagePreview" height="200" cover class="rounded"></v-img>
+                <v-btn
+                  icon="mdi-close"
+                  size="small"
+                  color="error"
+                  class="position-absolute"
+                  style="top: 8px; right: 8px"
+                  @click="handleRemoveImage"
+                ></v-btn>
+              </div>
+            </v-col>
+          </v-row>
         </v-card-text>
 
         <v-card-actions class="px-6 pb-6">
@@ -707,57 +845,33 @@ const handleSettingsClick = () => {
       </v-card>
     </v-dialog>
 
-    <!-- User Registration Dialog -->
-    <v-dialog v-if="userType === 'user'" v-model="showRegisterDialog" max-width="600px">
-      <v-card v-if="selectedTraining">
+    <!-- Registration Dialog (User) -->
+    <v-dialog v-if="userType === 'user'" v-model="showRegisterDialog" max-width="500px">
+      <v-card>
         <v-card-title>Register for Training</v-card-title>
         <v-card-text>
-          <v-img :src="selectedTraining.image" height="150" cover class="rounded mb-4"></v-img>
-
-          <h3 class="text-h6 font-weight-bold mb-3">{{ selectedTraining.name }}</h3>
-
-          <v-list>
-            <v-list-item>
-              <template v-slot:prepend>
-                <v-icon icon="mdi-map-marker"></v-icon>
-              </template>
-              <v-list-item-title>{{ selectedTraining.location }}</v-list-item-title>
-            </v-list-item>
-            <v-list-item>
-              <template v-slot:prepend>
-                <v-icon icon="mdi-calendar-start"></v-icon>
-              </template>
-              <v-list-item-title>{{
-                formatDateTime(selectedTraining.startDateTime)
-              }}</v-list-item-title>
-              <v-list-item-subtitle>Start</v-list-item-subtitle>
-            </v-list-item>
-            <v-list-item>
-              <template v-slot:prepend>
-                <v-icon icon="mdi-calendar-end"></v-icon>
-              </template>
-              <v-list-item-title>{{
-                formatDateTime(selectedTraining.endDateTime)
-              }}</v-list-item-title>
-              <v-list-item-subtitle>End</v-list-item-subtitle>
-            </v-list-item>
-          </v-list>
-
-          <v-divider class="my-3"></v-divider>
-
-          <div class="mb-3">
-            <div class="text-subtitle-2 mb-2">Topics:</div>
-            <div class="d-flex flex-wrap gap-1">
-              <v-chip
-                v-for="(topic, index) in selectedTraining.topics"
-                :key="index"
-                size="small"
-                variant="tonal"
-                color="primary"
-              >
-                {{ topic }}
-              </v-chip>
+          <div v-if="selectedTraining">
+            <div class="text-h6 mb-2">{{ selectedTraining.name }}</div>
+            <div class="mb-2">
+              <v-icon icon="mdi-map-marker" size="small" class="mr-1"></v-icon>
+              <span>{{ selectedTraining.location }}</span>
             </div>
+            <div class="mb-2">
+              <v-icon icon="mdi-calendar" size="small" class="mr-1"></v-icon>
+              <span>{{ formatDateTime(selectedTraining.start_date_time) }}</span>
+            </div>
+            <div class="mb-4">
+              <v-icon icon="mdi-clock-outline" size="small" class="mr-1"></v-icon>
+              <span>{{ formatDateTime(selectedTraining.end_date_time) }}</span>
+            </div>
+
+            <v-alert type="info" variant="tonal" class="mt-4">
+              You are registering as: <strong>{{ userName }}</strong> ({{ userEmail }})
+            </v-alert>
+
+            <v-alert type="warning" variant="tonal" class="mt-2">
+              Your registration will be pending until confirmed by the admin.
+            </v-alert>
           </div>
         </v-card-text>
 
@@ -770,11 +884,35 @@ const handleSettingsClick = () => {
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Delete Confirmation Dialog -->
+    <v-dialog v-model="showDeleteDialog" max-width="400px">
+      <v-card>
+        <v-card-title>Confirm Delete</v-card-title>
+        <v-card-text>
+          Are you sure you want to delete this {{ deleteTarget?.type }}? This action cannot be
+          undone.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="outlined" @click="showDeleteDialog = false">Cancel</v-btn>
+          <v-btn color="error" variant="elevated" @click="handleDelete">Delete</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Snackbar for notifications -->
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
+      {{ snackbarMessage }}
+      <template v-slot:actions>
+        <v-btn variant="text" @click="snackbar = false">Close</v-btn>
+      </template>
+    </v-snackbar>
   </div>
 </template>
 
 <style scoped>
 .gap-2 {
-  gap: 0.5rem;
+  gap: 8px;
 }
 </style>

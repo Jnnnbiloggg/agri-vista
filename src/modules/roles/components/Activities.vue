@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useActivities } from '../composables/useActivities'
 import HeaderActions from './shared/HeaderActions.vue'
 
 interface Props {
@@ -14,110 +15,67 @@ const authStore = useAuthStore()
 const userName = computed(() => authStore.fullName)
 const userEmail = computed(() => authStore.userEmail)
 
-interface Activity {
-  id: number
-  name: string
-  description: string
-  image: string
-  type: string
-  capacity: number
-  location: string
-}
-
-interface Booking {
-  id: number
-  activityName: string
-  userName: string
-  userEmail: string
-  bookingDate: string
-  status: 'pending' | 'confirmed' | 'cancelled'
-}
-
-interface Appointment {
-  id: number
-  fullName: string
-  email: string
-  contactNumber: string
-  appointmentType: string
-  date: string
-  time: string
-  note: string
-  status: 'pending' | 'confirmed' | 'cancelled'
-}
-
-// Sample data
-const activities = ref<Activity[]>([
-  {
-    id: 1,
-    name: 'Strawberry Picking Experience',
-    description:
-      'Join us for a fun strawberry picking session in our organic strawberry fields. Perfect for families!',
-    image: 'https://images.unsplash.com/photo-1464965911861-746a04b4bca6?w=400',
-    type: 'Harvesting',
-    capacity: 20,
-    location: 'Strawberry Field A',
-  },
-  {
-    id: 2,
-    name: 'Organic Farming Workshop',
-    description:
-      'Learn the basics of organic farming techniques and sustainable agriculture practices.',
-    image: 'https://images.unsplash.com/photo-1574943320219-553eb213f72d?w=400',
-    type: 'Workshop',
-    capacity: 15,
-    location: 'Training Center',
-  },
-])
-
-const bookings = ref<Booking[]>([
-  {
-    id: 1,
-    activityName: 'Strawberry Picking Experience',
-    userName: 'Maria Santos',
-    userEmail: 'maria@email.com',
-    bookingDate: '2025-01-20',
-    status: 'confirmed',
-  },
-  {
-    id: 2,
-    activityName: 'Organic Farming Workshop',
-    userName: 'Juan Rivera',
-    userEmail: 'juan@email.com',
-    bookingDate: '2025-01-22',
-    status: 'pending',
-  },
-])
-
-const appointments = ref<Appointment[]>([
-  {
-    id: 1,
-    fullName: 'Sarah Lee',
-    email: 'sarah@email.com',
-    contactNumber: '09123456789',
-    appointmentType: 'Farm Tour',
-    date: '2025-01-25',
-    time: '10:00',
-    note: 'Interested in learning about organic practices',
-    status: 'pending',
-  },
-])
+// Use activities composable
+const {
+  activities,
+  bookings,
+  appointments,
+  loading,
+  error,
+  activitiesTotal,
+  bookingsTotal,
+  appointmentsTotal,
+  activitiesPage,
+  bookingsPage,
+  appointmentsPage,
+  itemsPerPage,
+  activitiesTotalPages,
+  bookingsTotalPages,
+  appointmentsTotalPages,
+  fetchActivities,
+  searchActivities,
+  clearActivitiesSearch,
+  createActivity,
+  updateActivity,
+  deleteActivity,
+  fetchBookings,
+  searchBookings,
+  clearBookingsSearch,
+  createBooking,
+  updateBooking,
+  deleteBooking,
+  fetchAppointments,
+  searchAppointments,
+  clearAppointmentsSearch,
+  createAppointment,
+  updateAppointment,
+  deleteAppointment,
+  setupRealtimeSubscriptions,
+} = useActivities()
 
 // Dialog states
 const showAppointmentDialog = ref(false)
 const showBookingDialog = ref(false)
 const showActivityDialog = ref(false)
-const selectedActivity = ref<Activity | null>(null)
-const editingActivity = ref<Activity | null>(null)
+const showDeleteDialog = ref(false)
+const selectedActivity = ref<any | null>(null)
+const editingActivity = ref<any | null>(null)
+const deleteTarget = ref<{ type: 'activity' | 'booking' | 'appointment'; id: number } | null>(null)
+
+// Snackbar
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('success')
 
 // Admin tab
 const adminTab = ref('activities')
 
 // Forms
 const appointmentForm = ref({
-  fullName: userName.value,
+  full_name: userName.value,
   email: userEmail.value,
-  contactNumber: '',
-  appointmentType: '',
+  contact_number: '',
+  appointment_type: '',
   date: '',
   time: '',
   note: '',
@@ -144,6 +102,18 @@ const appointmentTypes = [
 
 const activityTypes = ['Workshop', 'Tour', 'Harvesting', 'Training', 'Event']
 
+// Load data on component mount
+onMounted(async () => {
+  if (props.userType === 'admin') {
+    await fetchActivities()
+    await fetchBookings()
+    await fetchAppointments()
+  } else {
+    await fetchActivities()
+  }
+  setupRealtimeSubscriptions()
+})
+
 // Image handling
 const handleImageSelect = (event: Event) => {
   const target = event.target as HTMLInputElement
@@ -167,10 +137,10 @@ const handleRemoveImage = () => {
 // User functions
 const openAppointmentForm = () => {
   appointmentForm.value = {
-    fullName: userName.value,
+    full_name: userName.value,
     email: userEmail.value,
-    contactNumber: '',
-    appointmentType: '',
+    contact_number: '',
+    appointment_type: '',
     date: '',
     time: '',
     note: '',
@@ -178,36 +148,59 @@ const openAppointmentForm = () => {
   showAppointmentDialog.value = true
 }
 
-const submitAppointment = () => {
-  const newAppointment: Appointment = {
-    id: Math.max(...appointments.value.map((a) => a.id), 0) + 1,
-    ...appointmentForm.value,
-    status: 'pending',
+const submitAppointment = async () => {
+  if (
+    !appointmentForm.value.contact_number ||
+    !appointmentForm.value.appointment_type ||
+    !appointmentForm.value.date ||
+    !appointmentForm.value.time
+  ) {
+    showSnackbar('Please fill in all required fields', 'error')
+    return
   }
 
-  appointments.value.unshift(newAppointment)
-  showAppointmentDialog.value = false
+  try {
+    const result = await createAppointment({
+      ...appointmentForm.value,
+      status: 'pending',
+    })
+    if (result.success) {
+      showAppointmentDialog.value = false
+      showSnackbar('Appointment scheduled successfully!', 'success')
+    } else {
+      showSnackbar(result.error || 'Failed to schedule appointment', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
+  }
 }
 
-const openBookingDialog = (activity: Activity) => {
+const openBookingDialog = (activity: any) => {
   selectedActivity.value = activity
   showBookingDialog.value = true
 }
 
-const confirmBooking = () => {
+const confirmBooking = async () => {
   if (!selectedActivity.value) return
 
-  const newBooking: Booking = {
-    id: Math.max(...bookings.value.map((b) => b.id), 0) + 1,
-    activityName: selectedActivity.value.name,
-    userName: userName.value,
-    userEmail: userEmail.value,
-    bookingDate: new Date().toISOString().split('T')[0],
-    status: 'pending',
-  }
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    const result = await createBooking({
+      activity_id: selectedActivity.value.id,
+      activity_name: selectedActivity.value.name,
+      booking_date: today,
+      status: 'pending',
+    })
 
-  bookings.value.unshift(newBooking)
-  showBookingDialog.value = false
+    if (result.success) {
+      showBookingDialog.value = false
+      showSnackbar('Booking created successfully!', 'success')
+    } else {
+      showSnackbar(result.error || 'Failed to create booking', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
+  }
 }
 
 // Admin functions
@@ -225,7 +218,7 @@ const handleAddActivity = () => {
   showActivityDialog.value = true
 }
 
-const handleEditActivity = (activity: Activity) => {
+const handleEditActivity = (activity: any) => {
   editingActivity.value = activity
   newActivity.value = {
     name: activity.name,
@@ -234,53 +227,123 @@ const handleEditActivity = (activity: Activity) => {
     capacity: activity.capacity,
     location: activity.location,
   }
-  imagePreview.value = activity.image
+  imagePreview.value = activity.image_url
   imageFile.value = null
   showActivityDialog.value = true
 }
 
-const handleSaveActivity = () => {
-  const image =
-    imagePreview.value || 'https://images.unsplash.com/photo-1574943320219-553eb213f72d?w=400'
+const handleSaveActivity = async () => {
+  if (
+    !newActivity.value.name ||
+    !newActivity.value.description ||
+    !newActivity.value.type ||
+    !newActivity.value.capacity ||
+    !newActivity.value.location
+  ) {
+    showSnackbar('Please fill in all required fields', 'error')
+    return
+  }
 
-  if (editingActivity.value) {
-    const index = activities.value.findIndex((a) => a.id === editingActivity.value!.id)
-    if (index !== -1) {
-      activities.value[index] = {
-        ...activities.value[index],
-        ...newActivity.value,
-        image,
-      }
+  try {
+    let result
+    if (editingActivity.value) {
+      result = await updateActivity(
+        editingActivity.value.id,
+        {
+          ...newActivity.value,
+          image_url: imagePreview.value,
+        },
+        imageFile.value,
+      )
+    } else {
+      result = await createActivity(
+        {
+          ...newActivity.value,
+          image_url: imagePreview.value,
+        },
+        imageFile.value,
+      )
     }
-  } else {
-    const newId = Math.max(...activities.value.map((a) => a.id), 0) + 1
-    activities.value.unshift({
-      id: newId,
-      ...newActivity.value,
-      image,
-    })
-  }
-  showActivityDialog.value = false
-}
 
-const handleDeleteActivity = (id: number) => {
-  const index = activities.value.findIndex((a) => a.id === id)
-  if (index !== -1) {
-    activities.value.splice(index, 1)
+    if (result.success) {
+      showActivityDialog.value = false
+      showSnackbar(
+        editingActivity.value ? 'Activity updated successfully!' : 'Activity created successfully!',
+        'success',
+      )
+    } else {
+      showSnackbar(result.error || 'Failed to save activity', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
   }
 }
 
-const updateBookingStatus = (bookingId: number, status: Booking['status']) => {
-  const booking = bookings.value.find((b) => b.id === bookingId)
-  if (booking) {
-    booking.status = status
+const confirmDelete = (type: 'activity' | 'booking' | 'appointment', id: number) => {
+  deleteTarget.value = { type, id }
+  showDeleteDialog.value = true
+}
+
+const handleDelete = async () => {
+  if (!deleteTarget.value) return
+
+  try {
+    let result
+    switch (deleteTarget.value.type) {
+      case 'activity':
+        result = await deleteActivity(deleteTarget.value.id)
+        break
+      case 'booking':
+        result = await deleteBooking(deleteTarget.value.id)
+        break
+      case 'appointment':
+        result = await deleteAppointment(deleteTarget.value.id)
+        break
+    }
+
+    if (result.success) {
+      showDeleteDialog.value = false
+      showSnackbar(
+        `${deleteTarget.value.type.charAt(0).toUpperCase() + deleteTarget.value.type.slice(1)} deleted successfully!`,
+        'success',
+      )
+    } else {
+      showSnackbar(result.error || 'Failed to delete', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
   }
 }
 
-const updateAppointmentStatus = (appointmentId: number, status: Appointment['status']) => {
-  const appointment = appointments.value.find((a) => a.id === appointmentId)
-  if (appointment) {
-    appointment.status = status
+const updateBookingStatus = async (
+  bookingId: number,
+  status: 'pending' | 'confirmed' | 'cancelled',
+) => {
+  try {
+    const result = await updateBooking(bookingId, { status })
+    if (result.success) {
+      showSnackbar(`Booking ${status} successfully!`, 'success')
+    } else {
+      showSnackbar(result.error || 'Failed to update booking status', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
+  }
+}
+
+const updateAppointmentStatus = async (
+  appointmentId: number,
+  status: 'pending' | 'confirmed' | 'cancelled',
+) => {
+  try {
+    const result = await updateAppointment(appointmentId, { status })
+    if (result.success) {
+      showSnackbar(`Appointment ${status} successfully!`, 'success')
+    } else {
+      showSnackbar(result.error || 'Failed to update appointment status', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
   }
 }
 
@@ -288,10 +351,10 @@ const downloadBookings = () => {
   const csvContent = [
     ['Activity Name', 'User Name', 'Email', 'Booking Date', 'Status'],
     ...bookings.value.map((b) => [
-      b.activityName,
-      b.userName,
-      b.userEmail,
-      b.bookingDate,
+      b.activity_name,
+      b.user_name,
+      b.user_email,
+      b.booking_date,
       b.status,
     ]),
   ]
@@ -310,13 +373,13 @@ const downloadAppointments = () => {
   const csvContent = [
     ['Full Name', 'Email', 'Contact', 'Type', 'Date', 'Time', 'Note', 'Status'],
     ...appointments.value.map((a) => [
-      a.fullName,
+      a.full_name,
       a.email,
-      a.contactNumber,
-      a.appointmentType,
+      a.contact_number,
+      a.appointment_type,
       a.date,
       a.time,
-      a.note,
+      a.note || '',
       a.status,
     ]),
   ]
@@ -344,6 +407,12 @@ const getStatusColor = (status: string) => {
   }
 }
 
+const showSnackbar = (message: string, color: string = 'success') => {
+  snackbarMessage.value = message
+  snackbarColor.value = color
+  snackbar.value = true
+}
+
 const activityHeaders = [
   { title: 'Activity', key: 'name' },
   { title: 'Type', key: 'type' },
@@ -353,18 +422,18 @@ const activityHeaders = [
 ]
 
 const bookingHeaders = [
-  { title: 'Activity Name', key: 'activityName' },
-  { title: 'User Name', key: 'userName' },
-  { title: 'Email', key: 'userEmail' },
-  { title: 'Booking Date', key: 'bookingDate' },
+  { title: 'Activity Name', key: 'activity_name' },
+  { title: 'User Name', key: 'user_name' },
+  { title: 'Email', key: 'user_email' },
+  { title: 'Booking Date', key: 'booking_date' },
   { title: 'Status', key: 'status' },
   { title: 'Actions', key: 'actions' },
 ]
 
 const appointmentHeaders = [
-  { title: 'Full Name', key: 'fullName' },
-  { title: 'Contact', key: 'contactNumber' },
-  { title: 'Type', key: 'appointmentType' },
+  { title: 'Full Name', key: 'full_name' },
+  { title: 'Contact', key: 'contact_number' },
+  { title: 'Type', key: 'appointment_type' },
   { title: 'Date & Time', key: 'date' },
   { title: 'Status', key: 'status' },
   { title: 'Actions', key: 'actions' },
@@ -376,14 +445,59 @@ const pageSubtitle = computed(() =>
     : 'Explore and book farm activities',
 )
 
-const handleSearch = (query: string) => {
-  console.log('Search query:', query)
-  // Implement your search logic here
+const handleSearch = async (query: string) => {
+  if (props.userType === 'admin') {
+    switch (adminTab.value) {
+      case 'activities':
+        await searchActivities(query)
+        break
+      case 'bookings':
+        await searchBookings(query)
+        break
+      case 'appointments':
+        await searchAppointments(query)
+        break
+    }
+  } else {
+    await searchActivities(query)
+  }
+}
+
+const handleClearSearch = async () => {
+  if (props.userType === 'admin') {
+    switch (adminTab.value) {
+      case 'activities':
+        await clearActivitiesSearch()
+        break
+      case 'bookings':
+        await clearBookingsSearch()
+        break
+      case 'appointments':
+        await clearAppointmentsSearch()
+        break
+    }
+  } else {
+    await clearActivitiesSearch()
+  }
 }
 
 const handleSettingsClick = () => {
   console.log('Settings clicked')
-  // Navigate to settings or open settings dialog
+}
+
+const formatDate = (dateString: string) => {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+const formatTime = (timeString: string) => {
+  return new Date(`2000-01-01T${timeString}`).toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 </script>
 
@@ -422,11 +536,41 @@ const handleSettingsClick = () => {
         </v-col>
       </v-row>
 
+      <!-- Loading State -->
+      <v-row v-if="loading">
+        <v-col cols="12" class="text-center py-12">
+          <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
+          <p class="text-h6 text-grey-darken-1 mt-4">Loading activities...</p>
+        </v-col>
+      </v-row>
+
+      <!-- No Activities State -->
+      <v-row v-else-if="!loading && activities.length === 0">
+        <v-col cols="12">
+          <v-card class="text-center py-12" elevation="0" color="grey-lighten-4">
+            <v-icon icon="mdi-sprout-outline" size="100" color="grey-darken-1"></v-icon>
+            <v-card-title class="text-h5 mb-2">No Activities Available</v-card-title>
+            <v-card-text class="text-body-1 text-grey-darken-1">
+              There are currently no farm activities available for booking.
+              <br />
+              Please check back later for new activities!
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+
       <!-- Activities Cards -->
-      <v-row>
+      <v-row v-else>
         <v-col v-for="activity in activities" :key="activity.id" cols="12" md="6" lg="4">
           <v-card class="fill-height">
-            <v-img :src="activity.image" height="200" cover></v-img>
+            <v-img
+              :src="
+                activity.image_url ||
+                'https://images.unsplash.com/photo-1574943320219-553eb213f72d?w=400'
+              "
+              height="200"
+              cover
+            ></v-img>
 
             <v-card-title>{{ activity.name }}</v-card-title>
 
@@ -484,11 +628,42 @@ const handleSettingsClick = () => {
               <v-card>
                 <v-card-title>All Farm Activities</v-card-title>
                 <v-card-text>
-                  <v-data-table :headers="activityHeaders" :items="activities" item-value="id">
+                  <!-- Loading State -->
+                  <div v-if="loading" class="text-center py-12">
+                    <v-progress-circular
+                      indeterminate
+                      color="primary"
+                      size="64"
+                    ></v-progress-circular>
+                    <p class="text-body-1 text-grey-darken-1 mt-4">Loading activities...</p>
+                  </div>
+
+                  <!-- No Data State -->
+                  <div v-else-if="!loading && activities.length === 0" class="text-center py-12">
+                    <v-icon icon="mdi-sprout-outline" size="80" color="grey-darken-1"></v-icon>
+                    <p class="text-h6 text-grey-darken-1 mt-4">No activities yet</p>
+                    <p class="text-body-2 text-grey">
+                      Click "Add Activity" to create your first farm activity.
+                    </p>
+                  </div>
+
+                  <!-- Data Table -->
+                  <v-data-table
+                    v-else
+                    :headers="activityHeaders"
+                    :items="activities"
+                    item-value="id"
+                  >
                     <template v-slot:item.name="{ item }">
                       <div class="d-flex align-center">
                         <v-avatar size="60" rounded="lg" class="mr-3">
-                          <v-img :src="item.image" cover></v-img>
+                          <v-img
+                            :src="
+                              item.image_url ||
+                              'https://images.unsplash.com/photo-1574943320219-553eb213f72d?w=400'
+                            "
+                            cover
+                          ></v-img>
                         </v-avatar>
                         <div>
                           <div class="font-weight-medium">{{ item.name }}</div>
@@ -512,7 +687,7 @@ const handleSettingsClick = () => {
                         size="small"
                         variant="text"
                         color="error"
-                        @click="handleDeleteActivity(item.id)"
+                        @click="confirmDelete('activity', item.id)"
                       ></v-btn>
                     </template>
                   </v-data-table>
@@ -539,7 +714,31 @@ const handleSettingsClick = () => {
               <v-card>
                 <v-card-title>Activity Bookings</v-card-title>
                 <v-card-text>
-                  <v-data-table :headers="bookingHeaders" :items="bookings" item-value="id">
+                  <!-- Loading State -->
+                  <div v-if="loading" class="text-center py-12">
+                    <v-progress-circular
+                      indeterminate
+                      color="primary"
+                      size="64"
+                    ></v-progress-circular>
+                    <p class="text-body-1 text-grey-darken-1 mt-4">Loading bookings...</p>
+                  </div>
+
+                  <!-- No Data State -->
+                  <div v-else-if="!loading && bookings.length === 0" class="text-center py-12">
+                    <v-icon
+                      icon="mdi-calendar-blank-outline"
+                      size="80"
+                      color="grey-darken-1"
+                    ></v-icon>
+                    <p class="text-h6 text-grey-darken-1 mt-4">No bookings yet</p>
+                    <p class="text-body-2 text-grey">
+                      Bookings will appear here when users book farm activities.
+                    </p>
+                  </div>
+
+                  <!-- Data Table -->
+                  <v-data-table v-else :headers="bookingHeaders" :items="bookings" item-value="id">
                     <template v-slot:item.status="{ item }">
                       <v-chip :color="getStatusColor(item.status)" size="small" variant="tonal">
                         {{ item.status }}
@@ -592,7 +791,36 @@ const handleSettingsClick = () => {
               <v-card>
                 <v-card-title>User Appointments</v-card-title>
                 <v-card-text>
-                  <v-data-table :headers="appointmentHeaders" :items="appointments" item-value="id">
+                  <!-- Loading State -->
+                  <div v-if="loading" class="text-center py-12">
+                    <v-progress-circular
+                      indeterminate
+                      color="primary"
+                      size="64"
+                    ></v-progress-circular>
+                    <p class="text-body-1 text-grey-darken-1 mt-4">Loading appointments...</p>
+                  </div>
+
+                  <!-- No Data State -->
+                  <div v-else-if="!loading && appointments.length === 0" class="text-center py-12">
+                    <v-icon
+                      icon="mdi-calendar-clock-outline"
+                      size="80"
+                      color="grey-darken-1"
+                    ></v-icon>
+                    <p class="text-h6 text-grey-darken-1 mt-4">No appointments yet</p>
+                    <p class="text-body-2 text-grey">
+                      Appointments will appear here when users schedule them.
+                    </p>
+                  </div>
+
+                  <!-- Data Table -->
+                  <v-data-table
+                    v-else
+                    :headers="appointmentHeaders"
+                    :items="appointments"
+                    item-value="id"
+                  >
                     <template v-slot:item.date="{ item }">
                       <div>
                         <div>{{ item.date }}</div>
@@ -646,7 +874,7 @@ const handleSettingsClick = () => {
             <v-row>
               <v-col cols="12">
                 <v-text-field
-                  v-model="appointmentForm.fullName"
+                  v-model="appointmentForm.full_name"
                   label="Full Name"
                   variant="outlined"
                   readonly
@@ -664,7 +892,7 @@ const handleSettingsClick = () => {
 
               <v-col cols="12">
                 <v-text-field
-                  v-model="appointmentForm.contactNumber"
+                  v-model="appointmentForm.contact_number"
                   label="Contact Number *"
                   variant="outlined"
                   required
@@ -673,7 +901,7 @@ const handleSettingsClick = () => {
 
               <v-col cols="12">
                 <v-select
-                  v-model="appointmentForm.appointmentType"
+                  v-model="appointmentForm.appointment_type"
                   label="Appointment Type *"
                   :items="appointmentTypes"
                   variant="outlined"
@@ -728,7 +956,15 @@ const handleSettingsClick = () => {
       <v-card v-if="selectedActivity">
         <v-card-title>Book Activity</v-card-title>
         <v-card-text>
-          <v-img :src="selectedActivity.image" height="150" cover class="rounded mb-4"></v-img>
+          <v-img
+            :src="
+              selectedActivity.image_url ||
+              'https://images.unsplash.com/photo-1574943320219-553eb213f72d?w=400'
+            "
+            height="150"
+            cover
+            class="rounded mb-4"
+          ></v-img>
 
           <h3 class="text-h6 font-weight-bold mb-2">{{ selectedActivity.name }}</h3>
           <p class="text-body-2 mb-4">{{ selectedActivity.description }}</p>
@@ -861,6 +1097,30 @@ const handleSettingsClick = () => {
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Delete Confirmation Dialog -->
+    <v-dialog v-model="showDeleteDialog" max-width="400px">
+      <v-card>
+        <v-card-title class="text-h5">Confirm Delete</v-card-title>
+        <v-card-text>
+          Are you sure you want to delete this {{ deleteTarget?.type }}? This action cannot be
+          undone.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn variant="outlined" @click="showDeleteDialog = false">Cancel</v-btn>
+          <v-btn color="error" variant="elevated" @click="handleDelete">Delete</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Snackbar -->
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
+      {{ snackbarMessage }}
+      <template v-slot:actions>
+        <v-btn variant="text" @click="snackbar = false">Close</v-btn>
+      </template>
+    </v-snackbar>
   </div>
 </template>
 
