@@ -84,15 +84,15 @@
   overflow: hidden;
 }
 
-.modern-table :deep(.v-table__wrapper) {
+.modern-table .v-table__wrapper {
   border-radius: var(--radius-xl) !important;
 }
 
-.modern-table :deep(thead) {
+.modern-table thead {
   background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
 }
 
-.modern-table :deep(thead th) {
+.modern-table thead th {
   font-weight: 600 !important;
   color: #495057 !important;
   text-transform: uppercase;
@@ -102,43 +102,43 @@
   border-bottom: 2px solid #dee2e6 !important;
 }
 
-.modern-table :deep(tbody tr) {
+.modern-table tbody tr {
   transition: all var(--transition-fast) !important;
 }
 
-.modern-table :deep(tbody tr:hover) {
+.modern-table tbody tr:hover {
   background-color: rgba(76, 175, 80, 0.04) !important;
   transform: scale(1.001);
 }
 
-.modern-table :deep(tbody td) {
+.modern-table tbody td {
   padding: var(--spacing-md) var(--spacing-lg) !important;
   border-bottom: 1px solid #f1f3f5 !important;
 }
 
-.modern-table :deep(tbody tr:last-child td) {
+.modern-table tbody tr:last-child td {
   border-bottom: none !important;
 }
 
 /* ==================== MODERN INPUT/FORM STYLES ==================== */
-.modern-input :deep(.v-field) {
+.modern-input .v-field {
   border-radius: var(--radius-md) !important;
   transition: all var(--transition-fast) !important;
 }
 
-.modern-input :deep(.v-field--focused) {
+.modern-input .v-field--focused {
   border-color: rgba(76, 175, 80, 0.5) !important;
 }
 
-.modern-input-rounded :deep(.v-field) {
+.modern-input-rounded .v-field {
   border-radius: var(--radius-full) !important;
 }
 
-.modern-select :deep(.v-field) {
+.modern-select .v-field {
   border-radius: var(--radius-md) !important;
 }
 
-.modern-textarea :deep(.v-field) {
+.modern-textarea .v-field {
   border-radius: var(--radius-lg) !important;
 }
 
@@ -156,60 +156,60 @@
 }
 
 /* ==================== MODERN DIALOG STYLES ==================== */
-.modern-dialog :deep(.v-overlay__content) {
+.modern-dialog .v-overlay__content {
   border-radius: var(--radius-2xl) !important;
 }
 
-.modern-dialog :deep(.v-card) {
+.modern-dialog .v-card {
   border-radius: var(--radius-2xl) !important;
   border: 1px solid rgba(0, 0, 0, 0.08) !important;
 }
 
-.modern-dialog :deep(.v-card-title) {
+.modern-dialog .v-card-title {
   padding: var(--spacing-xl) var(--spacing-xl) var(--spacing-md) !important;
   font-size: var(--font-size-2xl) !important;
   font-weight: 600 !important;
 }
 
-.modern-dialog :deep(.v-card-text) {
+.modern-dialog .v-card-text {
   padding: var(--spacing-md) var(--spacing-xl) !important;
 }
 
-.modern-dialog :deep(.v-card-actions) {
+.modern-dialog .v-card-actions {
   padding: var(--spacing-md) var(--spacing-xl) var(--spacing-xl) !important;
   gap: var(--spacing-md);
 }
 
 /* ==================== MODERN MENU/DROPDOWN STYLES ==================== */
-.modern-menu :deep(.v-overlay__content) {
+.modern-menu .v-overlay__content {
   border-radius: var(--radius-lg) !important;
   border: 1px solid rgba(0, 0, 0, 0.08) !important;
 }
 
-.modern-menu :deep(.v-list) {
+.modern-menu .v-list {
   padding: var(--spacing-sm) !important;
 }
 
-.modern-menu :deep(.v-list-item) {
+.modern-menu .v-list-item {
   border-radius: var(--radius-md) !important;
   margin-bottom: var(--spacing-xs) !important;
   transition: all var(--transition-fast) !important;
 }
 
-.modern-menu :deep(.v-list-item:last-child) {
+.modern-menu .v-list-item:last-child {
   margin-bottom: 0 !important;
 }
 
-.modern-menu :deep(.v-list-item:hover) {
+.modern-menu .v-list-item:hover {
   background-color: rgba(76, 175, 80, 0.08) !important;
 }
 
 /* ==================== MODERN TAB STYLES ==================== */
-.modern-tabs :deep(.v-tabs) {
+.modern-tabs .v-tabs {
   background: transparent !important;
 }
 
-.modern-tabs :deep(.v-tab) {
+.modern-tabs .v-tab {
   border-radius: var(--radius-full) !important;
   text-transform: none !important;
   font-weight: 500 !important;
@@ -217,12 +217,12 @@
   transition: all var(--transition-fast) !important;
 }
 
-.modern-tabs :deep(.v-tab--selected) {
+.modern-tabs .v-tab--selected {
   background-color: rgba(76, 175, 80, 0.1) !important;
   color: #2e7d32 !important;
 }
 
-.modern-tabs :deep(.v-tab-slider) {
+.modern-tabs .v-tab-slider {
   display: none;
 }
 
@@ -337,7 +337,7 @@
 }
 
 /* ==================== MODERN SNACKBAR STYLES ==================== */
-.modern-snackbar :deep(.v-snackbar__wrapper) {
+.modern-snackbar .v-snackbar__wrapper {
   border-radius: var(--radius-xl) !important;
   backdrop-filter: blur(10px);
 }
@@ -360,13 +360,13 @@
 }
 
 /* ==================== PAGINATION STYLES ==================== */
-.modern-pagination :deep(.v-pagination__item) {
+.modern-pagination .v-pagination__item {
   border-radius: var(--radius-md) !important;
   margin: 0 var(--spacing-xs) !important;
   transition: all var(--transition-fast) !important;
 }
 
-.modern-pagination :deep(.v-pagination__item--is-active) {
+.modern-pagination .v-pagination__item--is-active {
   background-color: #4caf50 !important;
 }
 
@@ -487,9 +487,9 @@
     padding: var(--spacing-md) !important;
   }
 
-  .modern-dialog :deep(.v-card-title),
-  .modern-dialog :deep(.v-card-text),
-  .modern-dialog :deep(.v-card-actions) {
+  .modern-dialog .v-card-title,
+  .modern-dialog .v-card-text,
+  .modern-dialog .v-card-actions {
     padding-left: var(--spacing-lg) !important;
     padding-right: var(--spacing-lg) !important;
   }
