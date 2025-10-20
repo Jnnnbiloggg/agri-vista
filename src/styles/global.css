@@ -71,7 +71,7 @@ body {
   padding: var(--spacing-lg);
 }
 
-@media (min-width: 1280px) {
+/* @media (min-width: 1280px) {
   .v-container {
     max-width: 1400px;
   }
@@ -81,4 +81,4 @@ body {
   .v-container {
     max-width: 1600px;
   }
-}
+} */
