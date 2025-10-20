@@ -126,9 +126,9 @@ const pageTitle = computed(() => {
 
 const pageSubtitle = computed(() => {
   if (isRegisterMode.value) {
-    return 'Join AgriVista to access farm management features'
+    return 'Join to explore farm activities and fresh products'
   }
-  return 'Sign in to access your farm management dashboard'
+  return 'Sign in to access your AgriVista dashboard'
 })
 </script>
 
@@ -143,9 +143,9 @@ const pageSubtitle = computed(() => {
               <div class="mb-8 logo-wrapper" @click="goToLanding">
                 <img src="/logo-cropped.png" alt="AgriVista" class="hero-logo" />
               </div>
-              <h1 class="text-h3 font-weight-bold mb-4 text-white">Smart Farm Management</h1>
+              <h1 class="text-h3 font-weight-bold mb-4 text-white">AgriVista</h1>
               <p class="text-h6 text-white opacity-90 mb-8">
-                Harness the power of technology to optimize your agricultural operations
+                Connect with Robrosa's Strawberry & Herbs Farm
               </p>
               <div class="features-list">
                 <div v-for="feature in features" :key="feature.icon" class="feature-item">
@@ -336,10 +336,10 @@ const pageSubtitle = computed(() => {
 
 <script lang="ts">
 const features = [
-  { icon: 'mdi-chart-line', text: 'Real-time Analytics' },
-  { icon: 'mdi-weather-cloudy', text: 'Weather Monitoring' },
-  { icon: 'mdi-sprout', text: 'Crop Management' },
-  { icon: 'mdi-brain', text: 'AI-Powered Insights' },
+  { icon: 'mdi-leaf', text: 'Farm Activities & Bookings' },
+  { icon: 'mdi-package-variant-closed', text: 'Fresh Product Marketplace' },
+  { icon: 'mdi-school-outline', text: 'Training & Workshops' },
+  { icon: 'mdi-bullhorn', text: 'Announcements & Updates' },
 ]
 </script>
 

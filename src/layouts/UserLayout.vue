@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const authStore = useAuthStore()
 const drawer = ref(true)
 
 const userNavigationItems = [
@@ -93,8 +95,10 @@ const handleLogout = () => {
                 <v-icon icon="mdi-shield-account" color="white"></v-icon>
               </v-avatar>
               <div>
-                <div class="text-subtitle-2 text-primary">User Name</div>
-                <div class="text-caption text-grey-darken-1">User</div>
+                <div class="text-subtitle-2 text-primary">{{ authStore.fullName }}</div>
+                <div class="text-caption text-grey-darken-1">
+                  {{ authStore.userProfile?.userType === 'user' ? 'User' : 'Admin' }}
+                </div>
               </div>
             </div>
 
