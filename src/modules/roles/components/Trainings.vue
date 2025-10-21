@@ -36,12 +36,14 @@ const {
   createTraining,
   updateTraining,
   deleteTraining,
+  goToTrainingsPage,
   fetchRegistrations,
   searchRegistrations,
   clearRegistrationsSearch,
   createRegistration,
   updateRegistration,
   deleteRegistration,
+  goToRegistrationsPage,
   setupRealtimeSubscriptions,
 } = useTrainings()
 
@@ -352,6 +354,14 @@ const getStatusColor = (status: string) => {
   }
 }
 
+const trainingHeaders = [
+  { title: 'Training', key: 'name' },
+  { title: 'Location', key: 'location' },
+  { title: 'Start Date & Time', key: 'start_date_time' },
+  { title: 'Capacity', key: 'capacity' },
+  { title: 'Actions', key: 'actions' },
+]
+
 const registrationHeaders = [
   { title: 'Training Name', key: 'training_name' },
   { title: 'Participant', key: 'user_name' },
@@ -429,19 +439,35 @@ const handleSettingsClick = () => {
         <!-- Trainings Tab -->
         <v-window-item value="trainings">
           <v-row>
-            <v-col cols="12" class="d-flex justify-end mb-4">
-              <v-btn
-                color="primary"
-                variant="elevated"
-                prepend-icon="mdi-plus"
-                @click="handleAddTraining"
-              >
-                Add Training
-              </v-btn>
-            </v-col>
             <v-col cols="12">
               <v-card>
-                <v-card-title>Training Sessions</v-card-title>
+                <v-card-title class="d-flex justify-space-between align-center pa-6">
+                  <div class="d-flex align-center gap-4">
+                    <span class="text-h6">Training Sessions</span>
+                    <v-chip v-if="trainingsTotal > 0" color="primary" size="small"
+                      >{{ trainingsTotal }} total</v-chip
+                    >
+                  </div>
+                  <div class="d-flex align-center gap-2">
+                    <v-pagination
+                      v-if="trainings.length > 0"
+                      v-model="trainingsPage"
+                      :length="trainingsTotalPages"
+                      :total-visible="5"
+                      size="small"
+                      rounded="circle"
+                      @update:model-value="goToTrainingsPage"
+                    ></v-pagination>
+                    <v-btn
+                      color="primary"
+                      variant="elevated"
+                      prepend-icon="mdi-plus"
+                      @click="handleAddTraining"
+                    >
+                      Add Training
+                    </v-btn>
+                  </div>
+                </v-card-title>
                 <v-card-text>
                   <!-- Loading State -->
                   <div v-if="loading" class="text-center py-12">
@@ -471,80 +497,64 @@ const handleSettingsClick = () => {
                     </v-btn>
                   </div>
 
-                  <!-- Trainings Grid -->
-                  <v-row v-else>
-                    <v-col v-for="training in trainings" :key="training.id" cols="12" sm="6" md="4">
-                      <v-card class="fill-height">
-                        <v-img
-                          v-if="training.image_url"
-                          :src="training.image_url"
-                          height="200"
-                          cover
-                        ></v-img>
-                        <div
-                          v-else
-                          class="bg-grey-lighten-3 d-flex align-center justify-center"
-                          style="height: 200px"
-                        >
-                          <v-icon
-                            icon="mdi-school-outline"
-                            size="64"
-                            color="grey-lighten-1"
-                          ></v-icon>
+                  <!-- Data Table -->
+                  <v-data-table
+                    v-else
+                    :headers="trainingHeaders"
+                    :items="trainings"
+                    item-value="id"
+                    hide-default-footer
+                  >
+                    <template v-slot:item.name="{ item }">
+                      <div class="d-flex align-center">
+                        <v-avatar size="60" rounded="lg" class="mr-3">
+                          <v-img
+                            :src="
+                              item.image_url ||
+                              'https://images.unsplash.com/photo-1574943320219-553eb213f72d?w=400'
+                            "
+                            cover
+                          ></v-img>
+                        </v-avatar>
+                        <div>
+                          <div class="font-weight-medium">{{ item.name }}</div>
+                          <div class="text-caption text-grey-darken-1">
+                            {{
+                              item.description
+                                ? item.description.substring(0, 50) + '...'
+                                : 'No description'
+                            }}
+                          </div>
                         </div>
+                      </div>
+                    </template>
 
-                        <v-card-title class="text-h6">{{ training.name }}</v-card-title>
+                    <template v-slot:item.start_date_time="{ item }">
+                      <div>
+                        <div>{{ formatDateTime(item.start_date_time) }}</div>
+                        <div class="text-caption text-grey-darken-1">
+                          to {{ formatDateTime(item.end_date_time) }}
+                        </div>
+                      </div>
+                    </template>
 
-                        <v-card-text>
-                          <div class="mb-3">
-                            <v-icon icon="mdi-map-marker" size="small" class="mr-1"></v-icon>
-                            <span class="text-body-2">{{ training.location }}</span>
-                          </div>
-
-                          <div class="mb-3">
-                            <v-icon icon="mdi-clock-outline" size="small" class="mr-1"></v-icon>
-                            <span class="text-body-2">{{
-                              formatDateTime(training.start_date_time)
-                            }}</span>
-                          </div>
-
-                          <div class="mb-3">
-                            <v-icon icon="mdi-account-group" size="small" class="mr-1"></v-icon>
-                            <span class="text-body-2">Capacity: {{ training.capacity }}</span>
-                          </div>
-
-                          <div class="d-flex flex-wrap gap-2">
-                            <v-chip
-                              v-for="(topic, index) in training.topics"
-                              :key="index"
-                              size="small"
-                              variant="tonal"
-                              color="primary"
-                            >
-                              {{ topic }}
-                            </v-chip>
-                          </div>
-                        </v-card-text>
-
-                        <v-card-actions>
-                          <v-btn
-                            icon="mdi-pencil"
-                            size="small"
-                            variant="text"
-                            color="primary"
-                            @click="handleEditTraining(training)"
-                          ></v-btn>
-                          <v-btn
-                            icon="mdi-delete"
-                            size="small"
-                            variant="text"
-                            color="error"
-                            @click="confirmDelete('training', training.id)"
-                          ></v-btn>
-                        </v-card-actions>
-                      </v-card>
-                    </v-col>
-                  </v-row>
+                    <template v-slot:item.actions="{ item }">
+                      <v-btn
+                        icon="mdi-pencil"
+                        size="small"
+                        variant="text"
+                        color="primary"
+                        @click="handleEditTraining(item)"
+                      ></v-btn>
+                      <v-btn
+                        icon="mdi-delete"
+                        size="small"
+                        variant="text"
+                        color="error"
+                        @click="confirmDelete('training', item.id)"
+                      ></v-btn>
+                    </template>
+                  </v-data-table>
                 </v-card-text>
               </v-card>
             </v-col>
@@ -554,19 +564,35 @@ const handleSettingsClick = () => {
         <!-- Registrations Tab -->
         <v-window-item value="registrations">
           <v-row>
-            <v-col cols="12" class="d-flex justify-end mb-4">
-              <v-btn
-                color="success"
-                variant="elevated"
-                prepend-icon="mdi-download"
-                @click="downloadRegistrations"
-              >
-                Export Registrations
-              </v-btn>
-            </v-col>
             <v-col cols="12">
               <v-card>
-                <v-card-title>Registration List</v-card-title>
+                <v-card-title class="d-flex justify-space-between align-center pa-6">
+                  <div class="d-flex align-center gap-4">
+                    <span class="text-h6">Registration List</span>
+                    <v-chip v-if="registrationsTotal > 0" color="primary" size="small"
+                      >{{ registrationsTotal }} total</v-chip
+                    >
+                  </div>
+                  <div class="d-flex align-center gap-2">
+                    <v-pagination
+                      v-if="registrations.length > 0"
+                      v-model="registrationsPage"
+                      :length="registrationsTotalPages"
+                      :total-visible="5"
+                      size="small"
+                      rounded="circle"
+                      @update:model-value="goToRegistrationsPage"
+                    ></v-pagination>
+                    <v-btn
+                      color="success"
+                      variant="elevated"
+                      prepend-icon="mdi-download"
+                      @click="downloadRegistrations"
+                    >
+                      Export Registrations
+                    </v-btn>
+                  </div>
+                </v-card-title>
                 <v-card-text>
                   <!-- Loading State -->
                   <div v-if="loading" class="text-center py-12">
@@ -597,6 +623,7 @@ const handleSettingsClick = () => {
                     :headers="registrationHeaders"
                     :items="registrations"
                     item-value="id"
+                    hide-default-footer
                   >
                     <template v-slot:item.created_at="{ item }">
                       {{ new Date(item.created_at).toLocaleDateString() }}

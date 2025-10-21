@@ -660,10 +660,35 @@ export const useActivities = () => {
     }
   }
 
-  // Cleanup on component unmount
-  onUnmounted(() => {
-    unsubscribeRealtime()
-  })
+  /**
+   * Change page for activities
+   */
+  const goToActivitiesPage = async (page: number) => {
+    if (page >= 1 && page <= activitiesTotalPages.value) {
+      activitiesPage.value = page
+      await fetchActivities()
+    }
+  }
+
+  /**
+   * Change page for bookings
+   */
+  const goToBookingsPage = async (page: number) => {
+    if (page >= 1 && page <= bookingsTotalPages.value) {
+      bookingsPage.value = page
+      await fetchBookings()
+    }
+  }
+
+  /**
+   * Change page for appointments
+   */
+  const goToAppointmentsPage = async (page: number) => {
+    if (page >= 1 && page <= appointmentsTotalPages.value) {
+      appointmentsPage.value = page
+      await fetchAppointments()
+    }
+  }
 
   return {
     // State
@@ -696,6 +721,7 @@ export const useActivities = () => {
     createActivity,
     updateActivity,
     deleteActivity,
+    goToActivitiesPage,
 
     // Bookings methods
     fetchBookings,
@@ -704,6 +730,7 @@ export const useActivities = () => {
     createBooking,
     updateBooking,
     deleteBooking,
+    goToBookingsPage,
 
     // Appointments methods
     fetchAppointments,
@@ -712,6 +739,7 @@ export const useActivities = () => {
     createAppointment,
     updateAppointment,
     deleteAppointment,
+    goToAppointmentsPage,
 
     // Realtime
     setupRealtimeSubscriptions,

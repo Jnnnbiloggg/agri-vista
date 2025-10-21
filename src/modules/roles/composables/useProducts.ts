@@ -503,10 +503,25 @@ export const useProducts = () => {
     }
   }
 
-  // Cleanup on component unmount
-  onUnmounted(() => {
-    unsubscribeRealtime()
-  })
+  /**
+   * Change page for products
+   */
+  const goToProductsPage = async (page: number) => {
+    if (page >= 1 && page <= productsTotalPages.value) {
+      productsPage.value = page
+      await fetchProducts()
+    }
+  }
+
+  /**
+   * Change page for orders
+   */
+  const goToOrdersPage = async (page: number) => {
+    if (page >= 1 && page <= ordersTotalPages.value) {
+      ordersPage.value = page
+      await fetchOrders()
+    }
+  }
 
   return {
     // State
@@ -534,6 +549,7 @@ export const useProducts = () => {
     createProduct,
     updateProduct,
     deleteProduct,
+    goToProductsPage,
 
     // Orders methods
     fetchOrders,
@@ -542,6 +558,7 @@ export const useProducts = () => {
     createOrder,
     updateOrder,
     deleteOrder,
+    goToOrdersPage,
 
     // Realtime
     setupRealtimeSubscriptions,

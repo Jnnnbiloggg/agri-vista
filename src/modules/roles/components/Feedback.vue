@@ -33,6 +33,7 @@ const {
   updateFeedback,
   deleteFeedback,
   calculateRatings,
+  goToFeedbacksPage,
   setupRealtimeSubscription,
   cleanupRealtimeSubscription,
 } = useFeedback()
@@ -440,7 +441,23 @@ const handleSettingsClick = () => {
         <v-row>
           <v-col cols="12">
             <v-card>
-              <v-card-title>All Feedback Submissions</v-card-title>
+              <v-card-title class="d-flex justify-space-between align-center">
+                <div class="d-flex align-center gap-4">
+                  <span>All Feedback Submissions</span>
+                  <v-chip v-if="feedbacksTotal > 0" color="primary" size="small"
+                    >{{ feedbacksTotal }} total</v-chip
+                  >
+                </div>
+                <v-pagination
+                  v-if="feedbacks.length > 0"
+                  v-model="feedbacksPage"
+                  :length="feedbacksTotalPages"
+                  :total-visible="5"
+                  size="small"
+                  rounded="circle"
+                  @update:model-value="goToFeedbacksPage"
+                ></v-pagination>
+              </v-card-title>
               <v-card-text>
                 <!-- Empty State for Admin -->
                 <div v-if="feedbacks.length === 0" class="text-center py-12">
@@ -457,6 +474,7 @@ const handleSettingsClick = () => {
                   :items="feedbacks"
                   item-value="id"
                   :loading="loading"
+                  hide-default-footer
                 >
                   <template v-slot:item.user_name="{ item }">
                     <div class="d-flex align-center">

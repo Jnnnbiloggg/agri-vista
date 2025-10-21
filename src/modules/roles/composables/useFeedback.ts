@@ -264,6 +264,16 @@ export const useFeedback = () => {
     }
   }
 
+  /**
+   * Change page for feedbacks
+   */
+  const goToFeedbacksPage = async (page: number) => {
+    if (page >= 1 && page <= feedbacksTotalPages.value) {
+      feedbacksPage.value = page
+      await fetchFeedbacks()
+    }
+  }
+
   return {
     // State
     feedbacks,
@@ -284,6 +294,7 @@ export const useFeedback = () => {
     updateFeedback,
     deleteFeedback,
     calculateRatings,
+    goToFeedbacksPage,
     setupRealtimeSubscription,
     cleanupRealtimeSubscription,
   }

@@ -364,7 +364,7 @@ const isFormValid = computed(() => {
       <!-- User Cards -->
       <v-row v-else>
         <v-col v-for="announcement in announcements" :key="announcement.id" cols="12" md="6" lg="4">
-          <v-card class="fill-height" elevation="2">
+          <v-card class="fill-height">
             <v-img
               v-if="announcement.image_url"
               :src="announcement.image_url"
@@ -425,7 +425,7 @@ const isFormValid = computed(() => {
     <template v-else-if="userType === 'admin'">
       <v-row>
         <v-col cols="12">
-          <v-card elevation="2">
+          <v-card>
             <v-card-title class="d-flex justify-space-between align-center pa-6">
               <div class="d-flex align-center gap-4">
                 <span class="text-h6">All Announcements</span>
@@ -433,9 +433,20 @@ const isFormValid = computed(() => {
                   >{{ totalCount }} total</v-chip
                 >
               </div>
-              <v-btn color="primary" prepend-icon="mdi-plus" @click="handleAddAnnouncement">
-                Add Announcement
-              </v-btn>
+              <div class="d-flex align-center gap-2">
+                <v-pagination
+                  v-if="announcements.length > 0"
+                  v-model="currentPage"
+                  :length="totalPages"
+                  :total-visible="5"
+                  size="small"
+                  rounded="circle"
+                  @update:model-value="goToPage"
+                ></v-pagination>
+                <v-btn color="primary" prepend-icon="mdi-plus" @click="handleAddAnnouncement">
+                  Add Announcement
+                </v-btn>
+              </div>
             </v-card-title>
 
             <v-divider></v-divider>
@@ -527,26 +538,6 @@ const isFormValid = computed(() => {
 
               <template #bottom></template>
             </v-data-table>
-
-            <v-divider v-if="announcements.length > 0"></v-divider>
-
-            <!-- Admin Pagination -->
-            <v-card-actions
-              v-if="announcements.length > 0"
-              class="px-6 py-4 d-flex justify-space-between align-center"
-            >
-              <div class="text-body-2 text-grey">
-                Showing {{ (currentPage - 1) * itemsPerPage + 1 }} to
-                {{ Math.min(currentPage * itemsPerPage, totalCount) }} of {{ totalCount }} entries
-              </div>
-              <v-pagination
-                v-model="currentPage"
-                :length="totalPages"
-                :total-visible="5"
-                size="small"
-                @update:model-value="goToPage"
-              ></v-pagination>
-            </v-card-actions>
           </v-card>
         </v-col>
       </v-row>

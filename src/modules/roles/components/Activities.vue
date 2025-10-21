@@ -40,18 +40,21 @@ const {
   createActivity,
   updateActivity,
   deleteActivity,
+  goToActivitiesPage,
   fetchBookings,
   searchBookings,
   clearBookingsSearch,
   createBooking,
   updateBooking,
   deleteBooking,
+  goToBookingsPage,
   fetchAppointments,
   searchAppointments,
   clearAppointmentsSearch,
   createAppointment,
   updateAppointment,
   deleteAppointment,
+  goToAppointmentsPage,
   setupRealtimeSubscriptions,
 } = useActivities()
 
@@ -666,19 +669,30 @@ const formatTime = (timeString: string) => {
         <!-- Farm Activities Tab -->
         <v-window-item value="activities">
           <v-row>
-            <v-col cols="12" class="d-flex justify-end mb-4">
-              <v-btn
-                color="primary"
-                variant="elevated"
-                prepend-icon="mdi-plus"
-                @click="handleAddActivity"
-              >
-                Add Activity
-              </v-btn>
-            </v-col>
             <v-col cols="12">
               <v-card>
-                <v-card-title>All Farm Activities</v-card-title>
+                <v-card-title class="d-flex justify-space-between align-center pa-6">
+                  <div class="d-flex align-center gap-4">
+                    <span class="text-h6">All Farm Activities</span>
+                    <v-chip v-if="activitiesTotal > 0" color="primary" size="small"
+                      >{{ activitiesTotal }} total</v-chip
+                    >
+                  </div>
+                  <div class="d-flex align-center gap-2">
+                    <v-pagination
+                      v-if="activities.length > 0"
+                      v-model="activitiesPage"
+                      :length="activitiesTotalPages"
+                      :total-visible="5"
+                      size="small"
+                      rounded="circle"
+                      @update:model-value="goToActivitiesPage"
+                    ></v-pagination>
+                    <v-btn color="primary" prepend-icon="mdi-plus" @click="handleAddActivity">
+                      Add Activity
+                    </v-btn>
+                  </div>
+                </v-card-title>
                 <v-card-text>
                   <!-- Loading State -->
                   <div v-if="loading" class="text-center py-12">
@@ -705,6 +719,7 @@ const formatTime = (timeString: string) => {
                     :headers="activityHeaders"
                     :items="activities"
                     item-value="id"
+                    hide-default-footer
                   >
                     <template v-slot:item.name="{ item }">
                       <div class="d-flex align-center">
@@ -752,19 +767,35 @@ const formatTime = (timeString: string) => {
         <!-- Farm Bookings Tab -->
         <v-window-item value="bookings">
           <v-row>
-            <v-col cols="12" class="d-flex justify-end mb-4">
-              <v-btn
-                color="success"
-                variant="elevated"
-                prepend-icon="mdi-download"
-                @click="downloadBookings"
-              >
-                View All Bookings
-              </v-btn>
-            </v-col>
             <v-col cols="12">
               <v-card>
-                <v-card-title>Activity Bookings</v-card-title>
+                <v-card-title class="d-flex justify-space-between align-center pa-6">
+                  <div class="d-flex align-center gap-4">
+                    <span class="text-h6">Activity Bookings</span>
+                    <v-chip v-if="bookingsTotal > 0" color="primary" size="small"
+                      >{{ bookingsTotal }} total</v-chip
+                    >
+                  </div>
+                  <div class="d-flex align-center gap-2">
+                    <v-pagination
+                      v-if="bookings.length > 0"
+                      v-model="bookingsPage"
+                      :length="bookingsTotalPages"
+                      :total-visible="5"
+                      size="small"
+                      rounded="circle"
+                      @update:model-value="goToBookingsPage"
+                    ></v-pagination>
+                    <v-btn
+                      color="success"
+                      variant="elevated"
+                      prepend-icon="mdi-download"
+                      @click="downloadBookings"
+                    >
+                      View All Bookings
+                    </v-btn>
+                  </div>
+                </v-card-title>
                 <v-card-text>
                   <!-- Loading State -->
                   <div v-if="loading" class="text-center py-12">
@@ -790,7 +821,13 @@ const formatTime = (timeString: string) => {
                   </div>
 
                   <!-- Data Table -->
-                  <v-data-table v-else :headers="bookingHeaders" :items="bookings" item-value="id">
+                  <v-data-table
+                    v-else
+                    :headers="bookingHeaders"
+                    :items="bookings"
+                    item-value="id"
+                    hide-default-footer
+                  >
                     <template v-slot:item.status="{ item }">
                       <v-chip :color="getStatusColor(item.status)" size="small" variant="tonal">
                         {{ item.status }}
@@ -829,19 +866,35 @@ const formatTime = (timeString: string) => {
         <!-- Appointments Tab -->
         <v-window-item value="appointments">
           <v-row>
-            <v-col cols="12" class="d-flex justify-end mb-4">
-              <v-btn
-                color="success"
-                variant="elevated"
-                prepend-icon="mdi-download"
-                @click="downloadAppointments"
-              >
-                View All Appointments
-              </v-btn>
-            </v-col>
             <v-col cols="12">
               <v-card>
-                <v-card-title>User Appointments</v-card-title>
+                <v-card-title class="d-flex justify-space-between align-center pa-6">
+                  <div class="d-flex align-center gap-4">
+                    <span class="text-h6">User Appointments</span>
+                    <v-chip v-if="appointmentsTotal > 0" color="primary" size="small"
+                      >{{ appointmentsTotal }} total</v-chip
+                    >
+                  </div>
+                  <div class="d-flex align-center gap-2">
+                    <v-pagination
+                      v-if="appointments.length > 0"
+                      v-model="appointmentsPage"
+                      :length="appointmentsTotalPages"
+                      :total-visible="5"
+                      size="small"
+                      rounded="circle"
+                      @update:model-value="goToAppointmentsPage"
+                    ></v-pagination>
+                    <v-btn
+                      color="success"
+                      variant="elevated"
+                      prepend-icon="mdi-download"
+                      @click="downloadAppointments"
+                    >
+                      View All Appointments
+                    </v-btn>
+                  </div>
+                </v-card-title>
                 <v-card-text>
                   <!-- Loading State -->
                   <div v-if="loading" class="text-center py-12">
@@ -872,6 +925,7 @@ const formatTime = (timeString: string) => {
                     :headers="appointmentHeaders"
                     :items="appointments"
                     item-value="id"
+                    hide-default-footer
                   >
                     <template v-slot:item.date="{ item }">
                       <div>

@@ -36,12 +36,14 @@ const {
   createProduct,
   updateProduct,
   deleteProduct,
+  goToProductsPage,
   fetchOrders,
   searchOrders,
   clearOrdersSearch,
   createOrder,
   updateOrder,
   deleteOrder,
+  goToOrdersPage,
   setupRealtimeSubscriptions,
 } = useProducts()
 
@@ -410,19 +412,35 @@ const handleSettingsClick = () => {
       <v-window v-model="adminTab">
         <v-window-item value="products">
           <v-row>
-            <v-col cols="12" class="d-flex justify-end mb-4">
-              <v-btn
-                color="primary"
-                variant="elevated"
-                prepend-icon="mdi-plus"
-                @click="handleAddProduct"
-              >
-                Add Product
-              </v-btn>
-            </v-col>
             <v-col cols="12">
               <v-card>
-                <v-card-title>Product Inventory</v-card-title>
+                <v-card-title class="d-flex justify-space-between align-center pa-6">
+                  <div class="d-flex align-center gap-4">
+                    <span class="text-h6">Product Inventory</span>
+                    <v-chip v-if="productsTotal > 0" color="primary" size="small"
+                      >{{ productsTotal }} total</v-chip
+                    >
+                  </div>
+                  <div class="d-flex align-center gap-2">
+                    <v-pagination
+                      v-if="products.length > 0"
+                      v-model="productsPage"
+                      :length="productsTotalPages"
+                      :total-visible="5"
+                      size="small"
+                      rounded="circle"
+                      @update:model-value="goToProductsPage"
+                    ></v-pagination>
+                    <v-btn
+                      color="primary"
+                      variant="elevated"
+                      prepend-icon="mdi-plus"
+                      @click="handleAddProduct"
+                    >
+                      Add Product
+                    </v-btn>
+                  </div>
+                </v-card-title>
                 <v-card-text>
                   <!-- Loading State -->
                   <div v-if="loading" class="text-center py-12">
@@ -457,7 +475,13 @@ const handleSettingsClick = () => {
                   </div>
 
                   <!-- Products Table -->
-                  <v-data-table v-else :headers="productHeaders" :items="products" item-value="id">
+                  <v-data-table
+                    v-else
+                    :headers="productHeaders"
+                    :items="products"
+                    item-value="id"
+                    hide-default-footer
+                  >
                     <template v-slot:item.name="{ item }">
                       <div class="d-flex align-center">
                         <v-avatar size="60" rounded="lg" class="mr-3">
@@ -510,19 +534,35 @@ const handleSettingsClick = () => {
         <!-- Orders Tab -->
         <v-window-item value="orders">
           <v-row>
-            <v-col cols="12" class="d-flex justify-end mb-4">
-              <v-btn
-                color="success"
-                variant="elevated"
-                prepend-icon="mdi-download"
-                @click="downloadSalesHistory"
-              >
-                View Full Sales History
-              </v-btn>
-            </v-col>
             <v-col cols="12">
               <v-card>
-                <v-card-title>Order History</v-card-title>
+                <v-card-title class="d-flex justify-space-between align-center pa-6">
+                  <div class="d-flex align-center gap-4">
+                    <span class="text-h6">Order History</span>
+                    <v-chip v-if="ordersTotal > 0" color="primary" size="small"
+                      >{{ ordersTotal }} total</v-chip
+                    >
+                  </div>
+                  <div class="d-flex align-center gap-2">
+                    <v-pagination
+                      v-if="orders.length > 0"
+                      v-model="ordersPage"
+                      :length="ordersTotalPages"
+                      :total-visible="5"
+                      size="small"
+                      rounded="circle"
+                      @update:model-value="goToOrdersPage"
+                    ></v-pagination>
+                    <v-btn
+                      color="success"
+                      variant="elevated"
+                      prepend-icon="mdi-download"
+                      @click="downloadSalesHistory"
+                    >
+                      View Full Sales History
+                    </v-btn>
+                  </div>
+                </v-card-title>
                 <v-card-text>
                   <!-- Loading State -->
                   <div v-if="loading" class="text-center py-12">
@@ -544,7 +584,13 @@ const handleSettingsClick = () => {
                   </div>
 
                   <!-- Orders Table -->
-                  <v-data-table v-else :headers="orderHeaders" :items="orders" item-value="id">
+                  <v-data-table
+                    v-else
+                    :headers="orderHeaders"
+                    :items="orders"
+                    item-value="id"
+                    hide-default-footer
+                  >
                     <template v-slot:item.order_status="{ item }">
                       <v-chip :color="getStatusColor(item.order_status)" class="text-capitalize">
                         {{ item.order_status }}

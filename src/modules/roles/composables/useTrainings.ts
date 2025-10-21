@@ -486,10 +486,25 @@ export const useTrainings = () => {
     }
   }
 
-  // Cleanup on component unmount
-  onUnmounted(() => {
-    unsubscribeRealtime()
-  })
+  /**
+   * Change page for trainings
+   */
+  const goToTrainingsPage = async (page: number) => {
+    if (page >= 1 && page <= trainingsTotalPages.value) {
+      trainingsPage.value = page
+      await fetchTrainings()
+    }
+  }
+
+  /**
+   * Change page for registrations
+   */
+  const goToRegistrationsPage = async (page: number) => {
+    if (page >= 1 && page <= registrationsTotalPages.value) {
+      registrationsPage.value = page
+      await fetchRegistrations()
+    }
+  }
 
   return {
     // State
@@ -512,6 +527,7 @@ export const useTrainings = () => {
     createTraining,
     updateTraining,
     deleteTraining,
+    goToTrainingsPage,
     // Registrations
     fetchRegistrations,
     searchRegistrations,
@@ -519,6 +535,7 @@ export const useTrainings = () => {
     createRegistration,
     updateRegistration,
     deleteRegistration,
+    goToRegistrationsPage,
     // Realtime
     setupRealtimeSubscriptions,
     unsubscribeRealtime,
