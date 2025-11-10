@@ -71,6 +71,13 @@ const router = createRouter({
           props: { userType: 'user' },
           meta: { requiresAuth: true, requiresUser: true },
         },
+        {
+          path: 'settings',
+          name: 'user-settings',
+          component: () => import('@/modules/roles/components/Settings.vue'),
+          props: { userType: 'user' },
+          meta: { requiresAuth: true, requiresUser: true },
+        },
       ],
     },
     {
@@ -118,6 +125,13 @@ const router = createRouter({
           path: 'feedback',
           name: 'admin-feedback',
           component: () => import('@/modules/roles/components/Feedback.vue'),
+          props: { userType: 'admin' },
+          meta: { requiresAuth: true, requiresAdmin: true },
+        },
+        {
+          path: 'settings',
+          name: 'admin-settings',
+          component: () => import('@/modules/roles/components/Settings.vue'),
           props: { userType: 'admin' },
           meta: { requiresAuth: true, requiresAdmin: true },
         },

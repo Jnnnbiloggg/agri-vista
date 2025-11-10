@@ -320,6 +320,7 @@ const isFormValid = computed(() => {
 
         <HeaderActions
           search-placeholder="Search announcements..."
+          :user-type="userType"
           @search="handleSearch"
           @settings-click="handleSettingsClick"
         />

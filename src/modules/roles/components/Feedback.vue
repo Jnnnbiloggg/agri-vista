@@ -256,6 +256,7 @@ const handleSettingsClick = () => {
 
         <HeaderActions
           search-placeholder="Search feedback..."
+          :user-type="userType"
           @search="handleSearch"
           @clear-search="handleClearSearch"
           @settings-click="handleSettingsClick"

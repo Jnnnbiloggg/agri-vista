@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useDashboard } from '../composables/useDashboard'
 import StatusBadge from './shared/StatusBadge.vue'
+import HeaderActions from './shared/HeaderActions.vue'
 
 interface Props {
   userType: 'admin' | 'user'
@@ -227,23 +228,28 @@ const formatDate = (dateString: string) => {
   })
 }
 
-// Form validation
-const isFormValid = computed(() => {
-  return (
-    newSlide.value.title.trim() !== '' &&
-    newSlide.value.description.trim() !== '' &&
-    (imagePreview.value !== null || imageFile.value !== null)
-  )
-})
+const handleSettingsClick = () => {
+  console.log('Settings clicked')
+}
 </script>
 
 <template>
   <div class="dashboard-container">
     <!-- Page Header -->
-    <div class="page-header mb-2xl">
-      <h1 class="page-title">{{ pageTitle }}</h1>
-      <p class="page-subtitle">{{ pageSubtitle }}</p>
-    </div>
+    <v-row class="mb-6">
+      <v-col cols="12" class="d-flex align-center justify-space-between">
+        <div>
+          <h1 class="page-title">{{ pageTitle }}</h1>
+          <p class="page-subtitle">{{ pageSubtitle }}</p>
+        </div>
+
+        <HeaderActions
+          :show-search="false"
+          :user-type="userType"
+          @settings-click="handleSettingsClick"
+        />
+      </v-col>
+    </v-row>
 
     <!-- Loading State -->
     <div v-if="loading && carouselSlides.length === 0" class="text-center py-12">

@@ -395,6 +395,7 @@ const handleSettingsClick = () => {
 
         <HeaderActions
           search-placeholder="Search products..."
+          :user-type="userType"
           @search="handleSearch"
           @settings-click="handleSettingsClick"
         />

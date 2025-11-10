@@ -9,6 +9,7 @@ interface Props {
   showNotifications?: boolean
   showSettings?: boolean
   searchPlaceholder?: string
+  userType?: 'admin' | 'user'
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -16,6 +17,7 @@ const props = withDefaults(defineProps<Props>(), {
   showNotifications: true,
   showSettings: true,
   searchPlaceholder: 'Search...',
+  userType: 'user',
 })
 
 const emit = defineEmits<{
@@ -52,6 +54,7 @@ const handleSettingsClick = () => {
             :show-search="showSearch"
             :show-notifications="showNotifications"
             :show-settings="showSettings"
+            :user-type="userType"
             @search="handleSearch"
             @settings-click="handleSettingsClick"
           />

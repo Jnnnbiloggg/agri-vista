@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useAuth } from '@/composables/useAuth'
+import { useRouter } from 'vue-router'
 
 interface Notification {
   id: number
@@ -16,6 +16,7 @@ interface Props {
   showSearch?: boolean
   showNotifications?: boolean
   showSettings?: boolean
+  userType?: 'admin' | 'user'
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -23,6 +24,7 @@ const props = withDefaults(defineProps<Props>(), {
   showSearch: true,
   showNotifications: true,
   showSettings: true,
+  userType: 'user',
 })
 
 const emit = defineEmits<{
@@ -30,11 +32,10 @@ const emit = defineEmits<{
   settingsClick: []
 }>()
 
-const { signOut } = useAuth()
+const router = useRouter()
 
 const searchQuery = ref('')
 const showNotificationMenu = ref(false)
-const showSettingsMenu = ref(false)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 // Debounced search watcher
@@ -94,7 +95,7 @@ const clearNotifications = () => {
 }
 
 const handleSettingsClick = () => {
-  emit('settingsClick')
+  router.push(`/${props.userType}/settings`)
 }
 
 const getNotificationIcon = (type: Notification['type']) => {
@@ -121,11 +122,6 @@ const getNotificationColor = (type: Notification['type']) => {
     default:
       return 'info'
   }
-}
-
-const handleLogout = async () => {
-  showSettingsMenu.value = false
-  await signOut()
 }
 </script>
 
@@ -230,33 +226,9 @@ const handleLogout = async () => {
     </v-menu>
 
     <!-- Settings -->
-    <v-menu v-if="showSettings" v-model="showSettingsMenu" location="bottom end" offset="8">
-      <template v-slot:activator="{ props: menuProps }">
-        <v-btn icon variant="text" v-bind="menuProps">
-          <v-icon icon="mdi-cog-outline"></v-icon>
-        </v-btn>
-      </template>
-
-      <v-list min-width="200">
-        <v-list-item
-          prepend-icon="mdi-account-circle"
-          title="Profile"
-          @click="handleSettingsClick"
-        ></v-list-item>
-        <v-list-item
-          prepend-icon="mdi-cog"
-          title="Settings"
-          @click="handleSettingsClick"
-        ></v-list-item>
-        <v-list-item
-          prepend-icon="mdi-help-circle"
-          title="Help & Support"
-          @click="handleSettingsClick"
-        ></v-list-item>
-        <v-divider></v-divider>
-        <v-list-item prepend-icon="mdi-logout" title="Logout" @click="handleLogout"></v-list-item>
-      </v-list>
-    </v-menu>
+    <v-btn v-if="showSettings" icon variant="text" @click="handleSettingsClick">
+      <v-icon icon="mdi-cog-outline"></v-icon>
+    </v-btn>
   </div>
 </template>
 
