@@ -46,6 +46,9 @@ const newSlide = ref({
 const imageFile = ref<File | null>(null)
 const imagePreview = ref<string | null>(null)
 
+// Map iframe ref
+const mapIframe = ref<HTMLIFrameElement | null>(null)
+
 // Farm location coordinates
 const farmLocation = ref({
   lat: 8.95,
@@ -231,6 +234,22 @@ const formatDate = (dateString: string) => {
 const handleSettingsClick = () => {
   console.log('Settings clicked')
 }
+
+// Form validation
+const isFormValid = computed(() => {
+  return !!(
+    newSlide.value.title &&
+    newSlide.value.description &&
+    (editingSlide.value || imageFile.value || imagePreview.value)
+  )
+})
+
+// Reset map view
+const resetMapView = () => {
+  if (mapIframe.value) {
+    mapIframe.value.src = `https://www.openstreetmap.org/export/embed.html?bbox=125.5250,8.9400,125.5450,8.9600&layer=mapnik&marker=8.9500,125.5350`
+  }
+}
 </script>
 
 <template>
@@ -239,8 +258,8 @@ const handleSettingsClick = () => {
     <v-row class="mb-6">
       <v-col cols="12" class="d-flex align-center justify-space-between">
         <div>
-          <h1 class="page-title">{{ pageTitle }}</h1>
-          <p class="page-subtitle">{{ pageSubtitle }}</p>
+          <h1 class="text-h4 font-weight-bold text-primary mb-2">{{ pageTitle }}</h1>
+          <p class="text-h6 text-grey-darken-1">{{ pageSubtitle }}</p>
         </div>
 
         <HeaderActions
@@ -365,17 +384,28 @@ const handleSettingsClick = () => {
 
               <v-card-text class="pa-4">
                 <!-- OpenStreetMap iframe -->
-                <div class="map-container">
+                <div class="map-container position-relative">
                   <iframe
+                    ref="mapIframe"
                     width="100%"
                     height="300"
                     frameborder="0"
                     scrolling="no"
                     marginheight="0"
                     marginwidth="0"
-                    src="https://www.openstreetmap.org/export/embed.html?bbox=125.5250,8.9400,125.5450,8.9600&layer=mapnik&marker=8.9500,125.5350"
+                    :src="`https://www.openstreetmap.org/export/embed.html?bbox=125.5250,8.9400,125.5450,8.9600&layer=mapnik&marker=8.9500,125.5350`"
                     style="border-radius: 12px"
                   ></iframe>
+
+                  <!-- Reset Map Button -->
+                  <v-btn
+                    icon="mdi-crosshairs-gps"
+                    size="small"
+                    color="white"
+                    elevation="2"
+                    class="map-reset-btn"
+                    @click="resetMapView"
+                  ></v-btn>
                 </div>
 
                 <div class="mt-4">
@@ -671,6 +701,14 @@ const handleSettingsClick = () => {
   border-radius: var(--radius-md);
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  position: relative;
+}
+
+.map-reset-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
 }
 
 /* Modern List Item */
