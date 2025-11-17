@@ -3,6 +3,14 @@ import { ref, computed, onMounted } from 'vue'
 import { useDashboard } from '../composables/useDashboard'
 import StatusBadge from './shared/StatusBadge.vue'
 import HeaderActions from './shared/HeaderActions.vue'
+import AppSnackbar from '@/components/shared/AppSnackbar.vue'
+import DeleteConfirmDialog from '@/components/shared/DeleteConfirmDialog.vue'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useImageHandler } from '@/composables/useImageHandler'
+import { useDeleteConfirmation } from '@/composables/useDeleteConfirmation'
+import { useFormDialog } from '@/composables/useFormDialog'
+import { usePageActions } from '@/composables/usePageActions'
+import { formatDate } from '@/utils/formatters'
 
 interface Props {
   userType: 'admin' | 'user'
@@ -10,7 +18,6 @@ interface Props {
 
 const props = defineProps<Props>()
 
-// Use dashboard composable
 const {
   carouselSlides,
   activities,
@@ -24,180 +31,120 @@ const {
   setupRealtimeSubscription,
 } = useDashboard()
 
-// Dialog states
-const showSlideDialog = ref(false)
-const showDeleteDialog = ref(false)
-const editingSlide = ref<any>(null)
-const slideToDelete = ref<number | null>(null)
+const { snackbar, snackbarMessage, snackbarColor, showSnackbar } = useSnackbar()
 
-// Snackbar
-const snackbar = ref(false)
-const snackbarMessage = ref('')
-const snackbarColor = ref('success')
-
-// Form data
-const newSlide = ref({
-  title: '',
-  description: '',
-  order_index: 0,
-  is_active: true,
+const deleteConfirmation = useDeleteConfirmation({
+  onDelete: async (id: number) => {
+    return await deleteCarouselSlide(id)
+  },
+  showSnackbar,
+  successMessage: 'Carousel slide deleted successfully',
+  errorMessage: 'Failed to delete slide',
 })
 
-const imageFile = ref<File | null>(null)
-const imagePreview = ref<string | null>(null)
+const { handleSettingsClick } = usePageActions({
+  userType: props.userType,
+})
 
-// Map iframe ref
+const {
+  imageFile,
+  imagePreview,
+  handleImageSelect,
+  removeImage,
+  error: imageError,
+} = useImageHandler({
+  maxSizeInMB: 5,
+  allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
+})
+
+const slideDialog = useFormDialog<{
+  title: string
+  description: string
+  order_index: number
+  is_active: boolean
+  id?: number
+  image_url?: string
+}>({
+  initialData: () => ({
+    title: '',
+    description: '',
+    order_index: carouselSlides.value.length,
+    is_active: true,
+  }),
+  validate: (data) => {
+    if (!data.title || !data.description) {
+      return { valid: false, message: 'Please fill in all required fields' }
+    }
+    if (!slideDialog.isEditing.value && !imageFile.value) {
+      return { valid: false, message: 'Please select an image' }
+    }
+    return { valid: true }
+  },
+  onSubmit: async (data, isEditing): Promise<{ success: boolean; error?: string }> => {
+    if (isEditing && data.id) {
+      return await updateCarouselSlide(data.id, data, imageFile.value)
+    } else {
+      if (!imageFile.value) {
+        return { success: false, error: 'Please select an image' }
+      }
+      return await createCarouselSlide(
+        {
+          ...data,
+          image_url: '',
+        },
+        imageFile.value,
+      )
+    }
+  },
+  onOpen: () => {
+    imageFile.value = null
+    imagePreview.value = slideDialog.editingItem.value?.image_url || null
+
+    if (!slideDialog.isEditing.value) {
+      slideDialog.formData.value.order_index = carouselSlides.value.length
+    }
+  },
+  showSnackbar,
+  successMessage: {
+    create: 'Slide created successfully!',
+    update: 'Slide updated successfully!',
+  },
+  errorMessage: {
+    create: 'Failed to save slide',
+    update: 'Failed to save slide',
+  },
+})
+
+const isHovering = ref(false)
+
 const mapIframe = ref<HTMLIFrameElement | null>(null)
 
-// Farm location coordinates
 const farmLocation = ref({
   lat: 8.95,
   lng: 125.535,
   name: "Robrosa's Farm",
   address: 'Purok 4-Sitio Tagkiling, Brgy. Anticala 8600 Butuan City, Philippines',
 })
-// Load data on mount
+
 onMounted(async () => {
   await fetchCarouselSlides()
   await fetchDashboardActivities()
   setupRealtimeSubscription()
 })
 
-// Image handling
-const handleImageSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-
-  if (file) {
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      showSnackbar('Image size should be less than 5MB', 'error')
-      return
-    }
-
-    // Check file type
-    if (!file.type.startsWith('image/')) {
-      showSnackbar('Please select a valid image file', 'error')
-      return
-    }
-
-    imageFile.value = file
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      imagePreview.value = e.target?.result as string
-    }
-    reader.readAsDataURL(file)
-  }
-}
-
-const handleRemoveImage = () => {
-  imageFile.value = null
-  imagePreview.value = null
-}
-
-// Admin carousel management
 const handleAddSlide = () => {
   if (props.userType !== 'admin') return
-  editingSlide.value = null
-  newSlide.value = {
-    title: '',
-    description: '',
-    order_index: carouselSlides.value.length,
-    is_active: true,
-  }
-  imageFile.value = null
-  imagePreview.value = null
-  showSlideDialog.value = true
+  slideDialog.openForCreate()
 }
 
 const handleEditSlide = (slide: any) => {
   if (props.userType !== 'admin') return
-  editingSlide.value = slide
-  newSlide.value = {
-    title: slide.title,
-    description: slide.description,
-    order_index: slide.order_index,
-    is_active: slide.is_active,
-  }
-  imageFile.value = null
-  imagePreview.value = slide.image_url
-  showSlideDialog.value = true
-}
-
-const handleSaveSlide = async () => {
-  if (props.userType !== 'admin') return
-
-  if (!newSlide.value.title || !newSlide.value.description) {
-    showSnackbar('Please fill in all required fields', 'error')
-    return
-  }
-
-  if (!editingSlide.value && !imageFile.value) {
-    showSnackbar('Please select an image', 'error')
-    return
-  }
-
-  try {
-    let result
-    if (editingSlide.value) {
-      result = await updateCarouselSlide(editingSlide.value.id, newSlide.value, imageFile.value)
-    } else {
-      if (!imageFile.value) {
-        showSnackbar('Please select an image', 'error')
-        return
-      }
-      result = await createCarouselSlide(
-        {
-          ...newSlide.value,
-          image_url: '', // Will be set by composable after upload
-        },
-        imageFile.value,
-      )
-    }
-
-    if (result.success) {
-      showSnackbar(
-        editingSlide.value ? 'Slide updated successfully!' : 'Slide created successfully!',
-        'success',
-      )
-      showSlideDialog.value = false
-    } else {
-      showSnackbar(result.error || 'Failed to save slide', 'error')
-    }
-  } catch (err: any) {
-    showSnackbar(err.message || 'An error occurred', 'error')
-  }
+  slideDialog.openForEdit(slide)
 }
 
 const confirmDelete = (id: number) => {
   if (props.userType !== 'admin') return
-  slideToDelete.value = id
-  showDeleteDialog.value = true
-}
-
-const handleDeleteSlide = async () => {
-  if (props.userType !== 'admin' || !slideToDelete.value) return
-
-  try {
-    const result = await deleteCarouselSlide(slideToDelete.value)
-
-    if (result.success) {
-      showSnackbar('Slide deleted successfully!', 'success')
-    } else {
-      showSnackbar(result.error || 'Failed to delete slide', 'error')
-    }
-  } catch (err: any) {
-    showSnackbar(err.message || 'An error occurred', 'error')
-  } finally {
-    showDeleteDialog.value = false
-    slideToDelete.value = null
-  }
-}
-
-const showSnackbar = (message: string, color: 'success' | 'error' | 'info' = 'success') => {
-  snackbarMessage.value = message
-  snackbarColor.value = color
-  snackbar.value = true
+  deleteConfirmation.openDialog(id)
 }
 
 const pageTitle = computed(() => (props.userType === 'admin' ? 'Admin Dashboard' : 'Welcome Back!'))
@@ -208,7 +155,6 @@ const pageSubtitle = computed(() =>
     : "Here's what's happening at Robrosa's Farm",
 )
 
-// Get status color
 const getStatusColor = (status: string) => {
   switch (status) {
     case 'upcoming':
@@ -222,29 +168,16 @@ const getStatusColor = (status: string) => {
   }
 }
 
-// Format date
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-}
-
-const handleSettingsClick = () => {
-  console.log('Settings clicked')
-}
-
-// Form validation
 const isFormValid = computed(() => {
   return !!(
-    newSlide.value.title &&
-    newSlide.value.description &&
-    (editingSlide.value || imageFile.value || imagePreview.value)
+    slideDialog.formData.value.title &&
+    slideDialog.formData.value.description &&
+    (slideDialog.isEditing.value || imageFile.value || imagePreview.value)
   )
 })
 
-// Reset map view
+const carouselCycle = computed(() => !isHovering.value)
+
 const resetMapView = () => {
   if (mapIframe.value) {
     mapIframe.value.src = `https://www.openstreetmap.org/export/embed.html?bbox=125.5250,8.9400,125.5450,8.9600&layer=mapnik&marker=8.9500,125.5350`
@@ -308,9 +241,11 @@ const resetMapView = () => {
                 <div v-if="carouselSlides.length > 0">
                   <v-carousel
                     height="400"
-                    cycle
+                    :cycle="carouselCycle"
                     :show-arrows="carouselSlides.length > 1"
                     hide-delimiter-background
+                    @mouseenter="isHovering = true"
+                    @mouseleave="isHovering = false"
                   >
                     <v-carousel-item v-for="slide in carouselSlides" :key="slide.id">
                       <v-img :src="slide.image_url" height="400" cover>
@@ -324,7 +259,7 @@ const resetMapView = () => {
                               <v-btn
                                 color="white"
                                 variant="elevated"
-                                size="small"
+                                size="default"
                                 class="mr-2"
                                 prepend-icon="mdi-pencil"
                                 @click="handleEditSlide(slide)"
@@ -334,7 +269,7 @@ const resetMapView = () => {
                               <v-btn
                                 color="error"
                                 variant="elevated"
-                                size="small"
+                                size="default"
                                 prepend-icon="mdi-delete"
                                 @click="confirmDelete(slide.id)"
                               >
@@ -515,18 +450,18 @@ const resetMapView = () => {
     </v-row>
 
     <!-- Admin: Add/Edit Slide Dialog -->
-    <v-dialog v-if="userType === 'admin'" v-model="showSlideDialog" max-width="700px">
+    <v-dialog v-if="userType === 'admin'" v-model="slideDialog.isOpen.value" max-width="700px">
       <v-card class="modern-dialog">
         <v-card-title class="pa-6 text-h5 font-weight-bold">
-          {{ editingSlide ? 'Edit Carousel Slide' : 'New Carousel Slide' }}
+          {{ slideDialog.isEditing.value ? 'Edit Carousel Slide' : 'New Carousel Slide' }}
         </v-card-title>
 
         <v-divider></v-divider>
 
         <v-card-text class="pa-6">
-          <v-form @submit.prevent="handleSaveSlide">
+          <v-form @submit.prevent="slideDialog.submit">
             <v-text-field
-              v-model="newSlide.title"
+              v-model="slideDialog.formData.value.title"
               label="Title *"
               placeholder="Enter slide title"
               variant="outlined"
@@ -536,7 +471,7 @@ const resetMapView = () => {
             ></v-text-field>
 
             <v-textarea
-              v-model="newSlide.description"
+              v-model="slideDialog.formData.value.description"
               label="Description *"
               placeholder="Enter slide description"
               variant="outlined"
@@ -547,7 +482,7 @@ const resetMapView = () => {
             ></v-textarea>
 
             <v-text-field
-              v-model.number="newSlide.order_index"
+              v-model.number="slideDialog.formData.value.order_index"
               label="Display Order"
               placeholder="0"
               variant="outlined"
@@ -560,7 +495,7 @@ const resetMapView = () => {
             ></v-text-field>
 
             <v-switch
-              v-model="newSlide.is_active"
+              v-model="slideDialog.formData.value.is_active"
               label="Active"
               color="primary"
               class="mb-4"
@@ -586,7 +521,7 @@ const resetMapView = () => {
                       size="small"
                       variant="text"
                       color="error"
-                      @click="handleRemoveImage"
+                      @click="removeImage"
                     ></v-btn>
                   </div>
                 </v-card>
@@ -616,53 +551,35 @@ const resetMapView = () => {
 
         <v-card-actions class="px-6 py-4">
           <v-spacer></v-spacer>
-          <v-btn variant="text" @click="showSlideDialog = false"> Cancel </v-btn>
+          <v-btn variant="text" @click="slideDialog.close"> Cancel </v-btn>
           <v-btn
             color="primary"
             variant="elevated"
-            :loading="loading"
+            :loading="slideDialog.isSubmitting.value"
             :disabled="!isFormValid"
-            @click="handleSaveSlide"
+            @click="slideDialog.submit"
           >
-            {{ editingSlide ? 'Update' : 'Create' }}
+            {{ slideDialog.isEditing.value ? 'Update' : 'Create' }}
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
-    <!-- Delete Confirmation Dialog -->
-    <v-dialog v-model="showDeleteDialog" max-width="400px">
-      <v-card>
-        <v-card-title class="pa-6">
-          <v-icon color="warning" size="large" class="mr-2">mdi-alert-circle</v-icon>
-          Confirm Delete
-        </v-card-title>
+    <DeleteConfirmDialog
+      v-model="deleteConfirmation.isOpen.value"
+      :is-deleting="deleteConfirmation.isDeleting.value"
+      title="Confirm Delete"
+      message="Are you sure you want to delete this carousel slide"
+      @confirm="deleteConfirmation.confirmDelete"
+    />
 
-        <v-divider></v-divider>
-
-        <v-card-text class="pa-6">
-          Are you sure you want to delete this carousel slide? This action cannot be undone.
-        </v-card-text>
-
-        <v-divider></v-divider>
-
-        <v-card-actions class="px-6 py-4">
-          <v-spacer></v-spacer>
-          <v-btn variant="text" @click="showDeleteDialog = false"> Cancel </v-btn>
-          <v-btn color="error" variant="elevated" :loading="loading" @click="handleDeleteSlide">
-            Delete
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- Snackbar for notifications -->
-    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top">
-      {{ snackbarMessage }}
-      <template #actions>
-        <v-btn variant="text" @click="snackbar = false"> Close </v-btn>
-      </template>
-    </v-snackbar>
+    <AppSnackbar
+      v-model="snackbar"
+      :message="snackbarMessage"
+      :color="snackbarColor"
+      :timeout="3000"
+      location="top"
+    />
   </div>
 </template>
 

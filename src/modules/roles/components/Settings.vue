@@ -4,6 +4,10 @@ import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import PageLayout from './shared/PageLayout.vue'
 import { supabase } from '../../../../utils/supabase'
+import AppSnackbar from '@/components/shared/AppSnackbar.vue'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useImageHandler } from '@/composables/useImageHandler'
+import { formatDate } from '@/utils/formatters'
 
 interface Props {
   userType: 'admin' | 'user'
@@ -59,16 +63,8 @@ const showDeleteDialog = ref(false)
 const deleteLoading = ref(false)
 const deleteConfirmation = ref('')
 
-// Snackbar
-const snackbar = ref(false)
-const snackbarMessage = ref('')
-const snackbarColor = ref('success')
-
-const showSnackbar = (message: string, color: 'success' | 'error' | 'info' = 'success') => {
-  snackbarMessage.value = message
-  snackbarColor.value = color
-  snackbar.value = true
-}
+// Use snackbar composable
+const { snackbar, snackbarMessage, snackbarColor, showSnackbar } = useSnackbar()
 
 // Load all users (admin only)
 const fetchAllUsers = async () => {
@@ -855,20 +851,14 @@ onMounted(() => {
       </v-card>
     </v-dialog>
 
-    <!-- Snackbar -->
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="5000" class="modern-snackbar">
-      <v-icon start>{{
-        snackbarColor === 'success'
-          ? 'mdi-check-circle'
-          : snackbarColor === 'error'
-            ? 'mdi-alert-circle'
-            : 'mdi-information'
-      }}</v-icon>
-      {{ snackbarMessage }}
-      <template #actions>
-        <v-btn variant="text" @click="snackbar = false"> Close </v-btn>
-      </template>
-    </v-snackbar>
+    <!-- Snackbar for notifications -->
+    <AppSnackbar
+      v-model="snackbar"
+      :message="snackbarMessage"
+      :color="snackbarColor"
+      :timeout="3000"
+      location="top"
+    />
   </PageLayout>
 </template>
 

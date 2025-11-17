@@ -5,7 +5,15 @@ import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useAnnouncements } from '../composables/useAnnouncements'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useImageHandler } from '@/composables/useImageHandler'
+import { useDeleteConfirmation } from '@/composables/useDeleteConfirmation'
+import { useFormDialog } from '@/composables/useFormDialog'
+import { usePageActions } from '@/composables/usePageActions'
+import { formatDate } from '@/utils/formatters'
 import HeaderActions from './shared/HeaderActions.vue'
+import AppSnackbar from '@/components/shared/AppSnackbar.vue'
+import DeleteConfirmDialog from '@/components/shared/DeleteConfirmDialog.vue'
 
 interface Props {
   userType: 'admin' | 'user'
@@ -53,21 +61,41 @@ const { isLoading: isLoadingMore } = useInfiniteScroll({
   hasMore: () => props.userType === 'user' && currentPage.value < totalPages.value,
 })
 
-const showAnnouncementDialog = ref(false)
-const editingAnnouncement = ref<any>(null)
-const imageFile = ref<File | null>(null)
-const imagePreview = ref<string | null>(null)
-const deleteConfirmDialog = ref(false)
-const announcementToDelete = ref<number | null>(null)
-const snackbar = ref(false)
-const snackbarMessage = ref('')
-const snackbarColor = ref('success')
+// Use snackbar composable
+const { snackbar, snackbarMessage, snackbarColor, showSnackbar } = useSnackbar()
 
-const newAnnouncement = ref({
-  title: '',
-  description: '',
-  duration: '',
-  image_url: null as string | null,
+// Use delete confirmation composable
+const deleteConfirmation = useDeleteConfirmation({
+  onDelete: async (id: number) => {
+    return await deleteAnnouncement(id)
+  },
+  showSnackbar,
+  successMessage: 'Announcement deleted successfully',
+  errorMessage: 'Failed to delete announcement',
+})
+
+// Use page actions composable
+const { handleSearch, handleClearSearch, handleSettingsClick } = usePageActions({
+  userType: props.userType,
+  onSearch: async (query: string) => {
+    if (query) {
+      await searchAnnouncements(query)
+    } else {
+      await clearSearch()
+    }
+  },
+})
+
+// Use image handler composable
+const {
+  imageFile,
+  imagePreview,
+  handleImageSelect,
+  removeImage,
+  error: imageError,
+} = useImageHandler({
+  maxSizeInMB: 5,
+  allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
 })
 
 // Separate duration fields for better UX
@@ -84,162 +112,91 @@ const durationUnits = [
   { title: 'Years', value: 'years' },
 ]
 
+// Use form dialog composable for announcement dialog
+const announcementDialog = useFormDialog<{
+  title: string
+  description: string
+  duration: string
+  image_url: string | null
+  id?: number
+}>({
+  initialData: () => ({
+    title: '',
+    description: '',
+    duration: '',
+    image_url: null as string | null,
+  }),
+  validate: (data) => {
+    if (!data.title || !data.description) {
+      return { valid: false, message: 'Please fill in all required fields' }
+    }
+    if (!durationNumber.value || !durationUnit.value) {
+      return { valid: false, message: 'Please specify duration with number and unit' }
+    }
+    return { valid: true }
+  },
+  onSubmit: async (data, isEditing): Promise<{ success: boolean; error?: string }> => {
+    // Combine duration number and unit
+    const duration = `${durationNumber.value} ${durationUnit.value}`
+    const formData = { ...data, duration }
+
+    if (isEditing && data.id) {
+      return await updateAnnouncement(data.id, formData, imageFile.value)
+    } else {
+      return await createAnnouncement(formData, imageFile.value)
+    }
+  },
+  onOpen: () => {
+    // Reset image handler when opening dialog
+    imageFile.value = null
+    imagePreview.value = announcementDialog.editingItem.value?.image_url || null
+
+    // Parse duration if editing
+    if (announcementDialog.editingItem.value) {
+      const durationMatch = announcementDialog.editingItem.value.duration.match(/^(\d+)\s*(\w+)$/)
+      if (durationMatch) {
+        durationNumber.value = parseInt(durationMatch[1])
+        durationUnit.value = durationMatch[2].toLowerCase()
+      } else {
+        durationNumber.value = null
+        durationUnit.value = ''
+      }
+    } else {
+      durationNumber.value = null
+      durationUnit.value = ''
+    }
+  },
+  showSnackbar,
+  successMessage: {
+    create: 'Announcement created successfully',
+    update: 'Announcement updated successfully',
+  },
+  errorMessage: {
+    create: 'Failed to create announcement',
+    update: 'Failed to update announcement',
+  },
+})
+
 // Load announcements on component mount
 onMounted(async () => {
   await fetchAnnouncements()
   setupRealtimeSubscription()
 })
 
-// Handle image file selection
-const handleImageSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-
-  if (file) {
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      showSnackbar('Image size should be less than 5MB', 'error')
-      return
-    }
-
-    // Check file type
-    if (!file.type.startsWith('image/')) {
-      showSnackbar('Please select a valid image file', 'error')
-      return
-    }
-
-    imageFile.value = file
-    // Create preview URL
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      imagePreview.value = e.target?.result as string
-    }
-    reader.readAsDataURL(file)
-  }
-}
-
-// Remove image
-const handleRemoveImage = () => {
-  imageFile.value = null
-  imagePreview.value = null
-  newAnnouncement.value.image_url = null
-}
-
 // Admin-only functions
 const handleAddAnnouncement = () => {
   if (props.userType !== 'admin') return
-  editingAnnouncement.value = null
-  newAnnouncement.value = {
-    title: '',
-    description: '',
-    duration: '',
-    image_url: null,
-  }
-  durationNumber.value = null
-  durationUnit.value = ''
-  imageFile.value = null
-  imagePreview.value = null
-  showAnnouncementDialog.value = true
+  announcementDialog.openForCreate()
 }
 
 const handleEditAnnouncement = (announcement: any) => {
   if (props.userType !== 'admin') return
-  editingAnnouncement.value = announcement
-  newAnnouncement.value = {
-    title: announcement.title,
-    description: announcement.description,
-    duration: announcement.duration,
-    image_url: announcement.image_url,
-  }
-
-  // Parse existing duration to extract number and unit
-  const durationMatch = announcement.duration.match(/^(\d+)\s*(\w+)$/)
-  if (durationMatch) {
-    durationNumber.value = parseInt(durationMatch[1])
-    durationUnit.value = durationMatch[2].toLowerCase()
-  } else {
-    durationNumber.value = null
-    durationUnit.value = ''
-  }
-
-  imageFile.value = null
-  imagePreview.value = announcement.image_url
-  showAnnouncementDialog.value = true
-}
-
-const handleSaveAnnouncement = async () => {
-  if (props.userType !== 'admin') return
-
-  // Validation
-  if (!newAnnouncement.value.title || !newAnnouncement.value.description) {
-    showSnackbar('Please fill in all required fields', 'error')
-    return
-  }
-
-  // Validate duration
-  if (!durationNumber.value || !durationUnit.value) {
-    showSnackbar('Please specify duration with number and unit', 'error')
-    return
-  }
-
-  // Combine duration number and unit
-  const duration = `${durationNumber.value} ${durationUnit.value}`
-  newAnnouncement.value.duration = duration
-
-  try {
-    if (editingAnnouncement.value) {
-      // Update existing announcement
-      const result = await updateAnnouncement(
-        editingAnnouncement.value.id,
-        newAnnouncement.value,
-        imageFile.value,
-      )
-
-      if (result.success) {
-        showSnackbar('Announcement updated successfully', 'success')
-        showAnnouncementDialog.value = false
-      } else {
-        showSnackbar(result.error || 'Failed to update announcement', 'error')
-      }
-    } else {
-      // Create new announcement
-      const result = await createAnnouncement(newAnnouncement.value, imageFile.value)
-
-      if (result.success) {
-        showSnackbar('Announcement created successfully', 'success')
-        showAnnouncementDialog.value = false
-      } else {
-        showSnackbar(result.error || 'Failed to create announcement', 'error')
-      }
-    }
-  } catch (err: any) {
-    showSnackbar(err.message || 'An error occurred', 'error')
-  }
+  announcementDialog.openForEdit(announcement)
 }
 
 const confirmDelete = (id: number) => {
   if (props.userType !== 'admin') return
-  announcementToDelete.value = id
-  deleteConfirmDialog.value = true
-}
-
-const handleDeleteAnnouncement = async () => {
-  if (props.userType !== 'admin' || !announcementToDelete.value) return
-
-  try {
-    const result = await deleteAnnouncement(announcementToDelete.value)
-
-    if (result.success) {
-      showSnackbar('Announcement deleted successfully', 'success')
-    } else {
-      showSnackbar(result.error || 'Failed to delete announcement', 'error')
-    }
-  } catch (err: any) {
-    showSnackbar(err.message || 'An error occurred', 'error')
-  } finally {
-    deleteConfirmDialog.value = false
-    announcementToDelete.value = null
-  }
+  deleteConfirmation.openDialog(id)
 }
 
 // Headers configuration based on user type
@@ -268,39 +225,11 @@ const pageSubtitle = computed(() =>
     : 'Stay updated with the latest farm news and events',
 )
 
-const handleSearch = async (query: string) => {
-  if (query) {
-    await searchAnnouncements(query)
-  } else {
-    await clearSearch()
-  }
-}
-
-const handleClearSearch = async () => {
-  await clearSearch()
-}
-
-const handleSettingsClick = () => {
-  console.log('Settings clicked')
-  // Navigate to settings or open settings dialog
-}
-
-const showSnackbar = (message: string, color: string = 'success') => {
-  snackbarMessage.value = message
-  snackbarColor.value = color
-  snackbar.value = true
-}
-
-const formatDate = (dateString: string) => {
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-}
-
 // Computed property to check if form is valid
 const isFormValid = computed(() => {
   return (
-    newAnnouncement.value.title.trim() !== '' &&
-    newAnnouncement.value.description.trim() !== '' &&
+    announcementDialog.formData.value.title.trim() !== '' &&
+    announcementDialog.formData.value.description.trim() !== '' &&
     durationNumber.value !== null &&
     durationNumber.value > 0 &&
     durationUnit.value !== ''
@@ -545,18 +474,22 @@ const isFormValid = computed(() => {
     </template>
 
     <!-- Admin Announcement Dialog -->
-    <v-dialog v-if="userType === 'admin'" v-model="showAnnouncementDialog" max-width="700px">
+    <v-dialog
+      v-if="userType === 'admin'"
+      v-model="announcementDialog.isOpen.value"
+      max-width="700px"
+    >
       <v-card>
         <v-card-title class="pa-6 text-h5 font-weight-bold">
-          {{ editingAnnouncement ? 'Edit Announcement' : 'New Announcement' }}
+          {{ announcementDialog.isEditing.value ? 'Edit Announcement' : 'New Announcement' }}
         </v-card-title>
 
         <v-divider></v-divider>
 
         <v-card-text class="pa-6">
-          <v-form @submit.prevent="handleSaveAnnouncement">
+          <v-form @submit.prevent="announcementDialog.submit">
             <v-text-field
-              v-model="newAnnouncement.title"
+              v-model="announcementDialog.formData.value.title"
               label="Title"
               placeholder="Enter announcement title"
               variant="outlined"
@@ -566,7 +499,7 @@ const isFormValid = computed(() => {
             ></v-text-field>
 
             <v-textarea
-              v-model="newAnnouncement.description"
+              v-model="announcementDialog.formData.value.description"
               label="Description"
               placeholder="Enter announcement description"
               variant="outlined"
@@ -629,7 +562,7 @@ const isFormValid = computed(() => {
                       size="small"
                       variant="text"
                       color="error"
-                      @click="handleRemoveImage"
+                      @click="removeImage"
                     ></v-btn>
                   </div>
                 </v-card>
@@ -659,58 +592,37 @@ const isFormValid = computed(() => {
 
         <v-card-actions class="px-6 py-4">
           <v-spacer></v-spacer>
-          <v-btn variant="text" @click="showAnnouncementDialog = false"> Cancel </v-btn>
+          <v-btn variant="text" @click="announcementDialog.close"> Cancel </v-btn>
           <v-btn
             color="primary"
             variant="elevated"
-            :loading="loading"
+            :loading="announcementDialog.isSubmitting.value"
             :disabled="!isFormValid"
-            @click="handleSaveAnnouncement"
+            @click="announcementDialog.submit"
           >
-            {{ editingAnnouncement ? 'Update' : 'Create' }}
+            {{ announcementDialog.isEditing.value ? 'Update' : 'Create' }}
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
     <!-- Delete Confirmation Dialog -->
-    <v-dialog v-model="deleteConfirmDialog" max-width="400px">
-      <v-card>
-        <v-card-title class="pa-6">
-          <v-icon color="warning" size="large" class="mr-2">mdi-alert-circle</v-icon>
-          Confirm Delete
-        </v-card-title>
-
-        <v-divider></v-divider>
-
-        <v-card-text class="pa-6">
-          Are you sure you want to delete this announcement? This action cannot be undone.
-        </v-card-text>
-
-        <v-divider></v-divider>
-
-        <v-card-actions class="px-6 py-4">
-          <v-spacer></v-spacer>
-          <v-btn variant="text" @click="deleteConfirmDialog = false"> Cancel </v-btn>
-          <v-btn
-            color="error"
-            variant="elevated"
-            :loading="loading"
-            @click="handleDeleteAnnouncement"
-          >
-            Delete
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <DeleteConfirmDialog
+      v-model="deleteConfirmation.isOpen.value"
+      :is-deleting="deleteConfirmation.isDeleting.value"
+      title="Confirm Delete"
+      message="Are you sure you want to delete this announcement"
+      @confirm="deleteConfirmation.confirmDelete"
+    />
 
     <!-- Snackbar for notifications -->
-    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top">
-      {{ snackbarMessage }}
-      <template #actions>
-        <v-btn variant="text" @click="snackbar = false"> Close </v-btn>
-      </template>
-    </v-snackbar>
+    <AppSnackbar
+      v-model="snackbar"
+      :message="snackbarMessage"
+      :color="snackbarColor"
+      :timeout="3000"
+      location="top"
+    />
   </div>
 </template>
 

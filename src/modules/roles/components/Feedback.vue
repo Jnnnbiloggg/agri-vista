@@ -2,8 +2,15 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedback } from '../composables/useFeedback'
+import { useProducts } from '../composables/useProducts'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import HeaderActions from './shared/HeaderActions.vue'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useFormDialog } from '@/composables/useFormDialog'
+import AppSnackbar from '@/components/shared/AppSnackbar.vue'
+import DeleteConfirmDialog from '@/components/shared/DeleteConfirmDialog.vue'
+import { useDeleteConfirmation } from '@/composables/useDeleteConfirmation'
+import { usePageActions } from '@/composables/usePageActions'
 
 interface Props {
   userType: 'admin' | 'user'
@@ -38,6 +45,9 @@ const {
   cleanupRealtimeSubscription,
 } = useFeedback()
 
+// Use products composable to fetch products for the dropdown
+const { products: productsList, fetchProducts: fetchProductsList } = useProducts()
+
 // Infinite scroll for published feedback cards
 const { isLoading: isLoadingMore } = useInfiniteScroll({
   onLoadMore: async () => {
@@ -49,30 +59,102 @@ const { isLoading: isLoadingMore } = useInfiniteScroll({
 })
 
 // Dialog states
-const showFeedbackDialog = ref(false)
 const showSuccessDialog = ref(false)
-const showDeleteDialog = ref(false)
-const feedbackToDelete = ref<number | null>(null)
 
-// Snackbar
-const snackbar = ref(false)
-const snackbarMessage = ref('')
-const snackbarColor = ref('success')
+// Use snackbar composable
+const { snackbar, snackbarMessage, snackbarColor, showSnackbar } = useSnackbar()
 
-const showSnackbar = (message: string, color: 'success' | 'error' | 'info' = 'success') => {
-  snackbarMessage.value = message
-  snackbarColor.value = color
-  snackbar.value = true
+// Use delete confirmation composable
+const deleteConfirmation = useDeleteConfirmation<number>({
+  onDelete: async (feedbackId) => {
+    const result = await deleteFeedback(feedbackId)
+    return { success: result !== undefined }
+  },
+  showSnackbar,
+  successMessage: 'Feedback deleted successfully',
+  errorMessage: 'Failed to delete feedback',
+})
+
+// Use page actions composable
+const { handleSearch, handleClearSearch, handleSettingsClick } = usePageActions({
+  userType: props.userType,
+  onSearch: async (query: string) => {
+    if (query) {
+      await searchFeedbacks(query)
+    } else {
+      await clearFeedbacksSearch()
+    }
+  },
+})
+
+// Feedback dialog (user)
+interface FeedbackForm {
+  profession: string
+  feedbackType: 'general' | 'product'
+  product: string
+  message: string
+  rating: number
+  isPublic: boolean
 }
 
-const feedbackForm = ref({
-  profession: '',
-  feedbackType: 'general' as 'general' | 'product',
-  product: '',
-  message: '',
-  rating: 5,
-  isPublic: true,
-  profilePic: '',
+const feedbackDialog = useFormDialog<FeedbackForm>({
+  initialData: {
+    profession: '',
+    feedbackType: 'general',
+    product: '',
+    message: '',
+    rating: 5,
+    isPublic: true,
+  },
+  onSubmit: async (formData) => {
+    try {
+      await createFeedback({
+        profession: formData.profession,
+        feedback_type: formData.feedbackType,
+        product: formData.feedbackType === 'product' ? formData.product : null,
+        message: formData.message,
+        rating: formData.rating,
+        is_public: formData.isPublic,
+      })
+
+      showSuccessDialog.value = true
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to submit feedback' }
+    }
+  },
+  showSnackbar,
+})
+
+// Edit feedback dialog (user)
+const editFeedbackDialog = useFormDialog<FeedbackForm & { id: number }>({
+  initialData: {
+    id: 0,
+    profession: '',
+    feedbackType: 'general',
+    product: '',
+    message: '',
+    rating: 5,
+    isPublic: true,
+  },
+  onSubmit: async (formData) => {
+    try {
+      await updateFeedback(formData.id, {
+        profession: formData.profession,
+        feedback_type: formData.feedbackType,
+        product: formData.feedbackType === 'product' ? formData.product : null,
+        message: formData.message,
+        rating: formData.rating,
+        is_public: formData.isPublic,
+      })
+
+      showSnackbar('Feedback updated successfully!', 'success')
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to update feedback' }
+    }
+  },
+  showSnackbar,
 })
 
 const professions = [
@@ -84,21 +166,22 @@ const professions = [
   { title: 'Other', value: 'other' },
 ]
 
-const products = [
-  { title: 'Strawberry', value: 'strawberry' },
-  { title: 'Tomatoes', value: 'tomatoes' },
-  { title: 'Lettuce', value: 'lettuce' },
-  { title: 'Herbs', value: 'herbs' },
-  { title: 'Other Vegetables', value: 'other-vegetables' },
-]
+// Computed property to get products from database
+const products = computed(() =>
+  productsList.value.map((product) => ({
+    title: product.name,
+    value: product.name.toLowerCase(),
+  })),
+)
 
 // Admin analytics
 const timeRange = ref<'weekly' | 'monthly' | 'yearly'>('monthly')
 const selectedProduct = ref('strawberry')
 
-// Load feedbacks on component mount
+// Load feedbacks and products on component mount
 onMounted(async () => {
   await fetchFeedbacks()
+  await fetchProductsList({ itemsPerPage: 1000 }) // Fetch all products for dropdown
   setupRealtimeSubscription()
 })
 
@@ -110,110 +193,52 @@ onUnmounted(() => {
 const generalRatings = computed(() => calculateRatings('general'))
 const productRatings = computed(() => calculateRatings('product', selectedProduct.value))
 
-const publishedFeedback = computed(() =>
-  feedbacks.value.filter((f) => f.status === 'approved' && f.is_public),
-)
+const publishedFeedback = computed(() => feedbacks.value.filter((f) => f.is_public))
+
+const myFeedback = computed(() => feedbacks.value.filter((f) => f.user_id === authStore.userId))
 
 // User functions
-const openFeedbackDialog = () => {
-  feedbackForm.value = {
-    profession: '',
-    feedbackType: 'general',
-    product: '',
-    message: '',
-    rating: 5,
-    isPublic: true,
-    profilePic: 'https://i.pravatar.cc/150?img=' + Math.floor(Math.random() * 70),
-  }
-  showFeedbackDialog.value = true
-}
+const openFeedbackDialog = () => feedbackDialog.openForCreate()
 
-const handleSubmitFeedback = async () => {
-  try {
-    await createFeedback({
-      profession: feedbackForm.value.profession,
-      feedback_type: feedbackForm.value.feedbackType,
-      product: feedbackForm.value.feedbackType === 'product' ? feedbackForm.value.product : null,
-      message: feedbackForm.value.message,
-      rating: feedbackForm.value.rating,
-      is_public: feedbackForm.value.isPublic,
-      profile_pic: feedbackForm.value.profilePic,
-    })
-
-    showFeedbackDialog.value = false
-    showSuccessDialog.value = true
-    showSnackbar('Feedback submitted successfully!', 'success')
-  } catch (err) {
-    showSnackbar('Failed to submit feedback. Please try again.', 'error')
+const openEditFeedbackDialog = (feedback: any) => {
+  editFeedbackDialog.formData.value = {
+    id: feedback.id,
+    profession: feedback.profession,
+    feedbackType: feedback.feedback_type,
+    product: feedback.product || '',
+    message: feedback.message,
+    rating: feedback.rating,
+    isPublic: feedback.is_public,
   }
-}
-
-// Admin functions
-const handleUpdateFeedbackStatus = async (
-  feedbackId: number,
-  newStatus: 'pending' | 'approved' | 'rejected',
-) => {
-  if (props.userType === 'admin') {
-    try {
-      await updateFeedback(feedbackId, { status: newStatus })
-      showSnackbar(`Feedback ${newStatus} successfully!`, 'success')
-    } catch (err) {
-      showSnackbar('Failed to update feedback status.', 'error')
-    }
-  }
+  editFeedbackDialog.isOpen.value = true
 }
 
 const confirmDeleteFeedback = (feedbackId: number) => {
-  feedbackToDelete.value = feedbackId
-  showDeleteDialog.value = true
-}
-
-const handleDeleteFeedback = async () => {
-  if (feedbackToDelete.value !== null) {
-    try {
-      await deleteFeedback(feedbackToDelete.value)
-      showSnackbar('Feedback deleted successfully!', 'success')
-    } catch (err) {
-      showSnackbar('Failed to delete feedback.', 'error')
-    } finally {
-      showDeleteDialog.value = false
-      feedbackToDelete.value = null
-    }
-  }
+  deleteConfirmation.openDialog(feedbackId)
 }
 
 const handleTogglePublicStatus = async (feedbackId: number, currentStatus: boolean) => {
-  if (props.userType === 'admin') {
-    try {
-      await updateFeedback(feedbackId, { is_public: !currentStatus })
-      showSnackbar('Visibility updated successfully!', 'success')
-    } catch (err) {
-      showSnackbar('Failed to update visibility.', 'error')
-    }
+  try {
+    await updateFeedback(feedbackId, { is_public: !currentStatus })
+    showSnackbar('Visibility updated successfully!', 'success')
+  } catch (err) {
+    showSnackbar('Failed to update visibility.', 'error')
   }
+}
+
+// My Feedback Dialog
+const showMyFeedbackDialog = ref(false)
+const openMyFeedbackDialog = () => {
+  showMyFeedbackDialog.value = true
 }
 
 const adminTableHeaders = [
   { title: 'User', key: 'user_name' },
   { title: 'Type', key: 'feedback_type' },
   { title: 'Rating', key: 'rating' },
-  { title: 'Status', key: 'status' },
-  { title: 'Public', key: 'is_public' },
+  { title: 'Visibility', key: 'is_public' },
   { title: 'Actions', key: 'actions', sortable: false },
 ]
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'approved':
-      return 'success'
-    case 'pending':
-      return 'warning'
-    case 'rejected':
-      return 'error'
-    default:
-      return 'grey'
-  }
-}
 
 const pageTitle = computed(() =>
   props.userType === 'admin'
@@ -226,22 +251,6 @@ const pageSubtitle = computed(() =>
     ? 'Manage feedback and track ratings'
     : 'View testimonials and share your experience',
 )
-
-const handleSearch = async (query: string) => {
-  if (query) {
-    await searchFeedbacks(query)
-  } else {
-    await clearFeedbacksSearch()
-  }
-}
-
-const handleClearSearch = async () => {
-  await clearFeedbacksSearch()
-}
-
-const handleSettingsClick = () => {
-  console.log('Settings clicked')
-}
 </script>
 
 <template>
@@ -278,7 +287,13 @@ const handleSettingsClick = () => {
       <template v-if="userType === 'admin'">
         <v-row class="mb-6">
           <v-col cols="12" class="d-flex justify-end mb-2">
-            <v-btn-toggle v-model="timeRange" color="primary" variant="outlined" mandatory>
+            <v-btn-toggle
+              v-model="timeRange"
+              color="primary"
+              variant="outlined"
+              mandatory
+              style="gap: 8px"
+            >
               <v-btn value="weekly">Weekly</v-btn>
               <v-btn value="monthly">Monthly</v-btn>
               <v-btn value="yearly">Yearly</v-btn>
@@ -479,10 +494,8 @@ const handleSettingsClick = () => {
                 >
                   <template v-slot:item.user_name="{ item }">
                     <div class="d-flex align-center">
-                      <v-avatar size="40" class="mr-3">
-                        <v-img
-                          :src="item.profile_pic || 'https://i.pravatar.cc/150?img=12'"
-                        ></v-img>
+                      <v-avatar size="40" class="mr-3" color="primary">
+                        <span class="text-white">{{ item.user_name.charAt(0).toUpperCase() }}</span>
                       </v-avatar>
                       <div>
                         <div class="font-weight-medium">{{ item.user_name }}</div>
@@ -512,50 +525,24 @@ const handleSettingsClick = () => {
                     ></v-rating>
                   </template>
 
-                  <template v-slot:item.status="{ item }">
-                    <v-chip :color="getStatusColor(item.status)" size="small" variant="tonal">
-                      {{ item.status }}
+                  <template v-slot:item.is_public="{ item }">
+                    <v-chip
+                      :color="item.is_public ? 'success' : 'grey'"
+                      size="small"
+                      variant="tonal"
+                    >
+                      {{ item.is_public ? 'Public' : 'Private' }}
                     </v-chip>
                   </template>
 
-                  <template v-slot:item.is_public="{ item }">
-                    <v-switch
-                      :model-value="item.is_public"
-                      @update:model-value="handleTogglePublicStatus(item.id, item.is_public)"
-                      hide-details
-                      density="compact"
-                    ></v-switch>
-                  </template>
-
                   <template v-slot:item.actions="{ item }">
-                    <v-menu>
-                      <template v-slot:activator="{ props: menuProps }">
-                        <v-btn
-                          icon="mdi-dots-vertical"
-                          size="small"
-                          variant="text"
-                          v-bind="menuProps"
-                        ></v-btn>
-                      </template>
-                      <v-list>
-                        <v-list-item
-                          title="Approve"
-                          prepend-icon="mdi-check"
-                          @click="handleUpdateFeedbackStatus(item.id, 'approved')"
-                        ></v-list-item>
-                        <v-list-item
-                          title="Reject"
-                          prepend-icon="mdi-cancel"
-                          @click="handleUpdateFeedbackStatus(item.id, 'rejected')"
-                        ></v-list-item>
-                        <v-divider></v-divider>
-                        <v-list-item
-                          title="Delete"
-                          prepend-icon="mdi-delete"
-                          @click="confirmDeleteFeedback(item.id)"
-                        ></v-list-item>
-                      </v-list>
-                    </v-menu>
+                    <v-btn
+                      icon="mdi-delete"
+                      size="small"
+                      variant="text"
+                      color="error"
+                      @click="confirmDeleteFeedback(item.id)"
+                    ></v-btn>
                   </template>
                 </v-data-table>
               </v-card-text>
@@ -574,15 +561,24 @@ const handleSettingsClick = () => {
                 Community Feedback & Testimonials
               </v-card-title>
 
-              <v-btn
-                v-if="userType === 'user'"
-                color="primary"
-                variant="elevated"
-                prepend-icon="mdi-plus"
-                @click="openFeedbackDialog"
-              >
-                Submit Feedback
-              </v-btn>
+              <div v-if="userType === 'user'" class="d-flex" style="gap: 8px">
+                <v-btn
+                  color="secondary"
+                  variant="outlined"
+                  prepend-icon="mdi-account-box"
+                  @click="openMyFeedbackDialog"
+                >
+                  My Feedback
+                </v-btn>
+                <v-btn
+                  color="primary"
+                  variant="elevated"
+                  prepend-icon="mdi-plus"
+                  @click="openFeedbackDialog"
+                >
+                  Submit Feedback
+                </v-btn>
+              </div>
             </v-col>
             <v-card-text>
               <!-- Empty State for Published Feedback -->
@@ -609,10 +605,10 @@ const handleSettingsClick = () => {
                   <v-card variant="outlined" height="100%">
                     <v-card-text>
                       <div class="d-flex align-center mb-3">
-                        <v-avatar size="50" class="mr-3">
-                          <v-img
-                            :src="feedback.profile_pic || 'https://i.pravatar.cc/150?img=12'"
-                          ></v-img>
+                        <v-avatar size="50" class="mr-3" color="primary">
+                          <span class="text-white text-h6">{{
+                            feedback.user_name.charAt(0).toUpperCase()
+                          }}</span>
                         </v-avatar>
                         <div class="flex-grow-1">
                           <div class="font-weight-bold text-h6">{{ feedback.user_name }}</div>
@@ -689,22 +685,25 @@ const handleSettingsClick = () => {
     </template>
 
     <!-- User Feedback Dialog -->
-    <v-dialog v-if="userType === 'user'" v-model="showFeedbackDialog" max-width="700px" persistent>
+    <v-dialog
+      v-if="userType === 'user'"
+      v-model="feedbackDialog.isOpen.value"
+      max-width="700px"
+      persistent
+    >
       <v-card>
         <v-card-title>
           <v-icon icon="mdi-comment-edit" class="mr-2"></v-icon>
           Submit Your Feedback
         </v-card-title>
         <v-card-text>
-          <v-form @submit.prevent="handleSubmitFeedback">
+          <v-form @submit.prevent="feedbackDialog.submit">
             <v-row>
               <!-- User Info Display -->
               <v-col cols="12">
                 <div class="d-flex align-center pa-4 bg-grey-lighten-4 rounded">
-                  <v-avatar size="50" class="mr-3">
-                    <v-img
-                      :src="feedbackForm.profilePic || 'https://i.pravatar.cc/150?img=12'"
-                    ></v-img>
+                  <v-avatar size="50" class="mr-3" color="primary">
+                    <span class="text-white text-h6">{{ userName.charAt(0).toUpperCase() }}</span>
                   </v-avatar>
                   <div>
                     <div class="text-h6 font-weight-bold">{{ userName }}</div>
@@ -715,7 +714,7 @@ const handleSettingsClick = () => {
 
               <v-col cols="12">
                 <v-select
-                  v-model="feedbackForm.profession"
+                  v-model="feedbackDialog.formData.value.profession"
                   label="Profession/Role *"
                   :items="professions"
                   variant="outlined"
@@ -724,15 +723,15 @@ const handleSettingsClick = () => {
               </v-col>
 
               <v-col cols="12">
-                <v-radio-group v-model="feedbackForm.feedbackType" inline>
+                <v-radio-group v-model="feedbackDialog.formData.value.feedbackType" inline>
                   <v-radio label="General Feedback/Testimonial" value="general"></v-radio>
                   <v-radio label="Product Feedback" value="product"></v-radio>
                 </v-radio-group>
               </v-col>
 
-              <v-col v-if="feedbackForm.feedbackType === 'product'" cols="12">
+              <v-col v-if="feedbackDialog.formData.value.feedbackType === 'product'" cols="12">
                 <v-select
-                  v-model="feedbackForm.product"
+                  v-model="feedbackDialog.formData.value.product"
                   label="Select Product *"
                   :items="products"
                   variant="outlined"
@@ -742,7 +741,7 @@ const handleSettingsClick = () => {
 
               <v-col cols="12">
                 <v-textarea
-                  v-model="feedbackForm.message"
+                  v-model="feedbackDialog.formData.value.message"
                   label="Your Feedback *"
                   variant="outlined"
                   rows="5"
@@ -756,7 +755,7 @@ const handleSettingsClick = () => {
                   <label class="text-body-1 font-weight-medium">Rating *</label>
                 </div>
                 <v-rating
-                  v-model="feedbackForm.rating"
+                  v-model="feedbackDialog.formData.value.rating"
                   :length="5"
                   color="warning"
                   active-color="warning"
@@ -767,7 +766,7 @@ const handleSettingsClick = () => {
 
               <v-col cols="12">
                 <v-checkbox
-                  v-model="feedbackForm.isPublic"
+                  v-model="feedbackDialog.formData.value.isPublic"
                   label="Allow this feedback to be displayed publicly"
                   hide-details
                 ></v-checkbox>
@@ -778,12 +777,13 @@ const handleSettingsClick = () => {
 
         <v-card-actions class="px-6 pb-6">
           <v-spacer></v-spacer>
-          <v-btn variant="outlined" @click="showFeedbackDialog = false">Cancel</v-btn>
+          <v-btn variant="outlined" @click="feedbackDialog.close">Cancel</v-btn>
           <v-btn
             color="primary"
             variant="elevated"
             prepend-icon="mdi-send"
-            @click="handleSubmitFeedback"
+            :loading="feedbackDialog.isSubmitting.value"
+            @click="feedbackDialog.submit"
           >
             Submit Feedback
           </v-btn>
@@ -808,27 +808,210 @@ const handleSettingsClick = () => {
     </v-dialog>
 
     <!-- Delete Confirmation Dialog -->
-    <v-dialog v-model="showDeleteDialog" max-width="500px">
+    <DeleteConfirmDialog
+      v-model="deleteConfirmation.isOpen.value"
+      :is-deleting="deleteConfirmation.isDeleting.value"
+      title="Confirm Delete"
+      message="Are you sure you want to delete this feedback? This action cannot be undone."
+      @confirm="deleteConfirmation.confirmDelete"
+      @cancel="deleteConfirmation.closeDialog"
+    />
+
+    <!-- My Feedback Dialog -->
+    <v-dialog v-if="userType === 'user'" v-model="showMyFeedbackDialog" max-width="1000px">
       <v-card>
-        <v-card-title class="text-h5">Confirm Delete</v-card-title>
+        <v-card-title class="d-flex align-center justify-space-between">
+          <div>
+            <v-icon icon="mdi-account-box" class="mr-2"></v-icon>
+            My Feedback
+          </div>
+          <v-btn icon="mdi-close" variant="text" @click="showMyFeedbackDialog = false"></v-btn>
+        </v-card-title>
         <v-card-text>
-          Are you sure you want to delete this feedback? This action cannot be undone.
+          <!-- Empty State -->
+          <div v-if="myFeedback.length === 0" class="text-center py-12">
+            <v-icon icon="mdi-comment-off-outline" size="64" color="grey"></v-icon>
+            <p class="text-h6 text-grey-darken-1 mt-4">No feedback submitted yet</p>
+            <p class="text-body-2 text-grey">Share your thoughts and experiences!</p>
+          </div>
+
+          <!-- My Feedback List -->
+          <v-row v-else>
+            <v-col v-for="feedback in myFeedback" :key="feedback.id" cols="12">
+              <v-card variant="outlined">
+                <v-card-text>
+                  <div class="d-flex justify-space-between align-start mb-3">
+                    <div class="flex-grow-1">
+                      <div class="d-flex align-center mb-2">
+                        <v-chip
+                          :color="feedback.feedback_type === 'general' ? 'primary' : 'success'"
+                          size="small"
+                          variant="tonal"
+                          class="mr-2"
+                        >
+                          {{ feedback.feedback_type }}
+                          <span v-if="feedback.product"> - {{ feedback.product }}</span>
+                        </v-chip>
+                        <v-chip
+                          :color="feedback.is_public ? 'success' : 'grey'"
+                          size="small"
+                          variant="tonal"
+                        >
+                          <v-icon
+                            :icon="feedback.is_public ? 'mdi-eye' : 'mdi-eye-off'"
+                            size="small"
+                            class="mr-1"
+                          ></v-icon>
+                          {{ feedback.is_public ? 'Public' : 'Private' }}
+                        </v-chip>
+                      </div>
+                      <v-rating
+                        :model-value="feedback.rating"
+                        :length="5"
+                        color="warning"
+                        size="small"
+                        readonly
+                        class="mb-2"
+                      ></v-rating>
+                      <p class="text-body-2">{{ feedback.message }}</p>
+                      <div class="text-caption text-grey-darken-1 mt-2">
+                        Submitted: {{ new Date(feedback.created_at).toLocaleString() }}
+                      </div>
+                    </div>
+                    <div class="d-flex gap-2 ml-4">
+                      <v-btn
+                        icon="mdi-pencil"
+                        size="small"
+                        variant="text"
+                        color="primary"
+                        @click="openEditFeedbackDialog(feedback)"
+                      ></v-btn>
+                      <v-btn
+                        :icon="feedback.is_public ? 'mdi-eye-off' : 'mdi-eye'"
+                        size="small"
+                        variant="text"
+                        color="secondary"
+                        @click="handleTogglePublicStatus(feedback.id, feedback.is_public)"
+                      ></v-btn>
+                      <v-btn
+                        icon="mdi-delete"
+                        size="small"
+                        variant="text"
+                        color="error"
+                        @click="confirmDeleteFeedback(feedback.id)"
+                      ></v-btn>
+                    </div>
+                  </div>
+                </v-card-text>
+              </v-card>
+            </v-col>
+          </v-row>
         </v-card-text>
-        <v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Edit Feedback Dialog -->
+    <v-dialog
+      v-if="userType === 'user'"
+      v-model="editFeedbackDialog.isOpen.value"
+      max-width="700px"
+      persistent
+    >
+      <v-card>
+        <v-card-title>
+          <v-icon icon="mdi-pencil" class="mr-2"></v-icon>
+          Edit Your Feedback
+        </v-card-title>
+        <v-card-text>
+          <v-form @submit.prevent="editFeedbackDialog.submit">
+            <v-row>
+              <v-col cols="12">
+                <v-select
+                  v-model="editFeedbackDialog.formData.value.profession"
+                  label="Profession/Role *"
+                  :items="professions"
+                  variant="outlined"
+                  required
+                ></v-select>
+              </v-col>
+
+              <v-col cols="12">
+                <v-radio-group v-model="editFeedbackDialog.formData.value.feedbackType" inline>
+                  <v-radio label="General Feedback/Testimonial" value="general"></v-radio>
+                  <v-radio label="Product Feedback" value="product"></v-radio>
+                </v-radio-group>
+              </v-col>
+
+              <v-col v-if="editFeedbackDialog.formData.value.feedbackType === 'product'" cols="12">
+                <v-select
+                  v-model="editFeedbackDialog.formData.value.product"
+                  label="Select Product *"
+                  :items="products"
+                  variant="outlined"
+                  required
+                ></v-select>
+              </v-col>
+
+              <v-col cols="12">
+                <v-textarea
+                  v-model="editFeedbackDialog.formData.value.message"
+                  label="Your Feedback *"
+                  variant="outlined"
+                  rows="5"
+                  required
+                  placeholder="Share your thoughts, suggestions, or experience..."
+                ></v-textarea>
+              </v-col>
+
+              <v-col cols="12">
+                <div class="mb-2">
+                  <label class="text-body-1 font-weight-medium">Rating *</label>
+                </div>
+                <v-rating
+                  v-model="editFeedbackDialog.formData.value.rating"
+                  :length="5"
+                  color="warning"
+                  active-color="warning"
+                  size="large"
+                  hover
+                ></v-rating>
+              </v-col>
+
+              <v-col cols="12">
+                <v-checkbox
+                  v-model="editFeedbackDialog.formData.value.isPublic"
+                  label="Allow this feedback to be displayed publicly"
+                  hide-details
+                ></v-checkbox>
+              </v-col>
+            </v-row>
+          </v-form>
+        </v-card-text>
+
+        <v-card-actions class="px-6 pb-6">
           <v-spacer></v-spacer>
-          <v-btn variant="text" @click="showDeleteDialog = false">Cancel</v-btn>
-          <v-btn color="error" variant="elevated" @click="handleDeleteFeedback">Delete</v-btn>
+          <v-btn variant="outlined" @click="editFeedbackDialog.close">Cancel</v-btn>
+          <v-btn
+            color="primary"
+            variant="elevated"
+            prepend-icon="mdi-content-save"
+            :loading="editFeedbackDialog.isSubmitting.value"
+            @click="editFeedbackDialog.submit"
+          >
+            Save Changes
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
     <!-- Snackbar for notifications -->
-    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top">
-      {{ snackbarMessage }}
-      <template v-slot:actions>
-        <v-btn variant="text" @click="snackbar = false">Close</v-btn>
-      </template>
-    </v-snackbar>
+    <AppSnackbar
+      v-model="snackbar"
+      :message="snackbarMessage"
+      :color="snackbarColor"
+      :timeout="3000"
+      location="top"
+    />
   </div>
 </template>
 

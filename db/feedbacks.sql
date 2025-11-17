@@ -6,13 +6,11 @@ CREATE TABLE IF NOT EXISTS feedbacks (
   user_id UUID REFERENCES auth.users(id),
   user_name TEXT NOT NULL,
   user_email TEXT NOT NULL,
-  profile_pic TEXT,
   profession TEXT NOT NULL,
   feedback_type TEXT NOT NULL CHECK (feedback_type IN ('general', 'product')),
   product TEXT,
   message TEXT NOT NULL,
   rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
   is_public BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -44,12 +42,12 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- FEEDBACKS POLICIES
 -- ============================================
 
--- Everyone can view approved and public feedbacks
+-- Everyone can view public feedbacks
 CREATE POLICY "Public feedbacks are viewable by everyone"
   ON feedbacks FOR SELECT
-  USING (status = 'approved' AND is_public = true);
+  USING (is_public = true);
 
--- Users can view their own feedbacks (all statuses)
+-- Users can view their own feedbacks
 CREATE POLICY "Users can view own feedbacks"
   ON feedbacks FOR SELECT
   USING (user_id = auth.uid());
@@ -67,20 +65,20 @@ CREATE POLICY "Authenticated users can create feedbacks"
     user_id = auth.uid()
   );
 
--- Users can update their own pending feedbacks
-CREATE POLICY "Users can update own pending feedbacks"
+-- Users can update their own feedbacks
+CREATE POLICY "Users can update own feedbacks"
   ON feedbacks FOR UPDATE
-  USING (user_id = auth.uid() AND status = 'pending');
+  USING (user_id = auth.uid());
 
--- Admins can update all feedbacks
-CREATE POLICY "Admins can update all feedbacks"
+-- Admins can view all feedbacks (but cannot update is_public)
+CREATE POLICY "Admins cannot update feedbacks"
   ON feedbacks FOR UPDATE
-  USING (is_admin(get_user_email()));
+  USING (false);
 
--- Users can delete their own pending feedbacks
-CREATE POLICY "Users can delete own pending feedbacks"
+-- Users can delete their own feedbacks
+CREATE POLICY "Users can delete own feedbacks"
   ON feedbacks FOR DELETE
-  USING (user_id = auth.uid() AND status = 'pending');
+  USING (user_id = auth.uid());
 
 -- Admins can delete all feedbacks
 CREATE POLICY "Admins can delete all feedbacks"
@@ -93,7 +91,6 @@ CREATE POLICY "Admins can delete all feedbacks"
 
 -- Feedbacks indexes
 CREATE INDEX IF NOT EXISTS feedbacks_created_at_idx ON feedbacks(created_at DESC);
-CREATE INDEX IF NOT EXISTS feedbacks_status_idx ON feedbacks(status);
 CREATE INDEX IF NOT EXISTS feedbacks_type_idx ON feedbacks(feedback_type);
 CREATE INDEX IF NOT EXISTS feedbacks_product_idx ON feedbacks(product);
 CREATE INDEX IF NOT EXISTS feedbacks_rating_idx ON feedbacks(rating);

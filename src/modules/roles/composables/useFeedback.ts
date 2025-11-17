@@ -11,13 +11,11 @@ export interface Feedback {
   user_id: string
   user_name: string
   user_email: string
-  profile_pic: string | null
   profession: string
   feedback_type: 'general' | 'product'
   product: string | null
   message: string
   rating: number
-  status: 'pending' | 'approved' | 'rejected'
   is_public: boolean
   created_at: string
   updated_at: string
@@ -75,9 +73,9 @@ export const useFeedback = () => {
         )
       }
 
-      // If user is not admin, only show approved and public feedbacks + their own
+      // If user is not admin, only show public feedbacks + their own
       if (!authStore.isAdmin) {
-        query = query.or(`and(status.eq.approved,is_public.eq.true),user_id.eq.${authStore.userId}`)
+        query = query.or(`is_public.eq.true,user_id.eq.${authStore.userId}`)
       }
 
       const { data, error: fetchError, count } = await query
@@ -121,7 +119,7 @@ export const useFeedback = () => {
   const createFeedback = async (
     feedback: Omit<
       Feedback,
-      'id' | 'created_at' | 'updated_at' | 'user_id' | 'user_name' | 'user_email' | 'status'
+      'id' | 'created_at' | 'updated_at' | 'user_id' | 'user_name' | 'user_email'
     >,
   ) => {
     loading.value = true
@@ -133,7 +131,6 @@ export const useFeedback = () => {
         user_id: authStore.userId,
         user_name: authStore.fullName,
         user_email: authStore.userEmail,
-        status: 'pending' as const,
       }
 
       const { data, error: createError } = await supabase
@@ -213,11 +210,9 @@ export const useFeedback = () => {
 
   const calculateRatings = (type: 'general' | 'product', productName?: string) => {
     const filtered = feedbacks.value.filter((f) => {
-      if (type === 'general') return f.feedback_type === 'general' && f.status === 'approved'
+      if (type === 'general') return f.feedback_type === 'general'
       return (
-        f.feedback_type === 'product' &&
-        f.product?.toLowerCase() === productName?.toLowerCase() &&
-        f.status === 'approved'
+        f.feedback_type === 'product' && f.product?.toLowerCase() === productName?.toLowerCase()
       )
     })
 

@@ -185,20 +185,30 @@ export const useProducts = () => {
     error.value = null
 
     try {
+      // Get the existing product to access old images
+      const { data: existingProduct } = await supabase
+        .from('products')
+        .select('images')
+        .eq('id', id)
+        .single()
+
       let imageUrls = updates.images || []
 
-      // Delete old images if requested
-      if (deleteOldImages && imageUrls.length > 0) {
-        await Promise.all(imageUrls.map((url) => deleteImage(url)))
-        imageUrls = []
-      }
-
-      // Upload new images if provided
+      // If new images are being uploaded, delete old images and replace them
       if (imageFiles.length > 0) {
+        // Delete old images from storage
+        if (existingProduct?.images && existingProduct.images.length > 0) {
+          await Promise.all(existingProduct.images.map((url: string) => deleteImage(url)))
+        }
+
+        // Upload new images
         const uploadPromises = imageFiles.map((file) => uploadImage(file))
         const results = await Promise.all(uploadPromises)
-        const newImageUrls = results.filter((url): url is string => url !== null)
-        imageUrls = [...imageUrls, ...newImageUrls]
+        imageUrls = results.filter((url): url is string => url !== null)
+      } else if (deleteOldImages && imageUrls.length > 0) {
+        // Delete old images if explicitly requested
+        await Promise.all(imageUrls.map((url) => deleteImage(url)))
+        imageUrls = []
       }
 
       const { data, error: updateError } = await supabase

@@ -4,6 +4,14 @@ import { useAuthStore } from '@/stores/auth'
 import { useTrainings } from '../composables/useTrainings'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import HeaderActions from './shared/HeaderActions.vue'
+import AppSnackbar from '@/components/shared/AppSnackbar.vue'
+import DeleteConfirmDialog from '@/components/shared/DeleteConfirmDialog.vue'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useFormDialog } from '@/composables/useFormDialog'
+import { useImageHandler } from '@/composables/useImageHandler'
+import { useDeleteConfirmation } from '@/composables/useDeleteConfirmation'
+import { usePageActions } from '@/composables/usePageActions'
+import { formatDate } from '@/utils/formatters'
 
 interface Props {
   userType: 'admin' | 'user'
@@ -57,43 +65,166 @@ const { isLoading: isLoadingMore } = useInfiniteScroll({
   hasMore: () => props.userType === 'user' && trainingsPage.value < trainingsTotalPages.value,
 })
 
-// Dialog states
-const showTrainingDialog = ref(false)
-const showRegisterDialog = ref(false)
-const showDeleteDialog = ref(false)
+// Selected training for registration
 const selectedTraining = ref<any | null>(null)
-const editingTraining = ref<any | null>(null)
-const deleteTarget = ref<{ type: 'training' | 'registration'; id: number } | null>(null)
 
-// Snackbar
-const snackbar = ref(false)
-const snackbarMessage = ref('')
-const snackbarColor = ref('success')
+// Use snackbar composable
+const { snackbar, snackbarMessage, snackbarColor, showSnackbar } = useSnackbar()
 
-const showSnackbar = (message: string, color: 'success' | 'error' | 'info' = 'success') => {
-  snackbarMessage.value = message
-  snackbarColor.value = color
-  snackbar.value = true
-}
+// Use delete confirmation composable
+const deleteConfirmation = useDeleteConfirmation<{ type: 'training' | 'registration'; id: number }>(
+  {
+    onDelete: async (target) => {
+      if (target.type === 'training') {
+        const result = await deleteTraining(target.id)
+        return { success: result.success, error: result.error || undefined }
+      } else {
+        const result = await deleteRegistration(target.id)
+        return { success: result.success, error: result.error || undefined }
+      }
+    },
+    showSnackbar,
+    successMessage: (target) =>
+      `${target.type.charAt(0).toUpperCase() + target.type.slice(1)} deleted successfully`,
+    errorMessage: (target) => `Failed to delete ${target.type}`,
+  },
+)
 
-// View filter and admin tab
-const viewFilter = ref<'upcoming' | 'current' | 'past'>('upcoming')
-const adminTab = ref('trainings')
-
-// Forms
-const newTraining = ref({
-  name: '',
-  description: '',
-  location: '',
-  start_date_time: '',
-  end_date_time: '',
-  capacity: 0,
-  topics: [] as string[],
+// Use page actions composable
+const { handleSearch, handleClearSearch, handleSettingsClick } = usePageActions({
+  userType: props.userType,
+  onSearch: async (query: string) => {
+    if (props.userType === 'admin') {
+      if (adminTab.value === 'trainings') {
+        if (query) {
+          await searchTrainings(query)
+        } else {
+          await clearTrainingsSearch()
+        }
+      } else {
+        if (query) {
+          await searchRegistrations(query)
+        } else {
+          await clearRegistrationsSearch()
+        }
+      }
+    } else {
+      if (query) {
+        await searchTrainings(query)
+      } else {
+        await clearTrainingsSearch()
+      }
+    }
+  },
 })
 
+// Use image handler composable
+const {
+  imageFile,
+  imagePreview,
+  handleImageSelect,
+  removeImage,
+  error: imageError,
+} = useImageHandler({
+  maxSizeInMB: 5,
+  allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
+})
+
+// View filter and admin tab
+const viewFilter = ref<'in_progress' | 'completed'>('in_progress')
+const adminTab = ref('trainings')
+
+// Topic input for training dialog
 const topicInput = ref('')
-const imageFile = ref<File | null>(null)
-const imagePreview = ref<string | null>(null)
+
+// Training dialog (admin)
+interface TrainingForm {
+  id?: number
+  name: string
+  description: string
+  location: string
+  start_date_time: string
+  end_date_time: string
+  capacity: number
+  topics: string[]
+}
+
+const trainingDialog = useFormDialog<TrainingForm>({
+  initialData: {
+    name: '',
+    description: '',
+    location: '',
+    start_date_time: '',
+    end_date_time: '',
+    capacity: 0,
+    topics: [],
+  },
+  onOpen: () => {
+    topicInput.value = ''
+    removeImage()
+    // Load existing image for edit mode
+    const editingTraining = trainingDialog.editingItem.value as any
+    if (editingTraining?.image_url) {
+      imagePreview.value = editingTraining.image_url
+    }
+  },
+  onSubmit: async (formData) => {
+    if (
+      !formData.name ||
+      !formData.location ||
+      !formData.start_date_time ||
+      !formData.end_date_time
+    ) {
+      return { success: false, error: 'Please fill in all required fields' }
+    }
+
+    try {
+      let result
+      if (formData.id) {
+        result = await updateTraining(
+          formData.id,
+          {
+            name: formData.name,
+            description: formData.description,
+            location: formData.location,
+            start_date_time: formData.start_date_time,
+            end_date_time: formData.end_date_time,
+            capacity: formData.capacity,
+            topics: formData.topics,
+            image_url: imagePreview.value,
+          },
+          imageFile.value,
+        )
+      } else {
+        result = await createTraining(
+          {
+            name: formData.name,
+            description: formData.description,
+            location: formData.location,
+            start_date_time: formData.start_date_time,
+            end_date_time: formData.end_date_time,
+            capacity: formData.capacity,
+            topics: formData.topics,
+            image_url: null,
+          },
+          imageFile.value,
+        )
+      }
+
+      if (result.success) {
+        return { success: true }
+      } else {
+        return { success: false, error: result.error || 'Failed to save training' }
+      }
+    } catch (err: any) {
+      return { success: false, error: err.message || 'An error occurred' }
+    }
+  },
+  showSnackbar,
+})
+
+// Registration dialog (user) - kept simple as single confirmation
+const showRegisterDialog = ref(false)
 
 // Load data on component mount
 onMounted(async () => {
@@ -102,6 +233,7 @@ onMounted(async () => {
     await fetchRegistrations()
   } else {
     await fetchTrainings()
+    await fetchRegistrations() // Fetch user's own registrations
   }
   setupRealtimeSubscriptions()
 })
@@ -113,9 +245,8 @@ const filteredTrainings = computed(() => {
     const startDate = new Date(training.start_date_time)
     const endDate = new Date(training.end_date_time)
 
-    if (viewFilter.value === 'upcoming') return startDate > now
-    if (viewFilter.value === 'current') return startDate <= now && endDate >= now
-    if (viewFilter.value === 'past') return endDate < now
+    if (viewFilter.value === 'in_progress') return endDate >= now
+    if (viewFilter.value === 'completed') return endDate < now
     return true
   })
 })
@@ -132,148 +263,47 @@ const formatDateTime = (dateTime: string) => {
   })
 }
 
-// Image handling
-const handleImageSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  if (file) {
-    imageFile.value = file
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      imagePreview.value = e.target?.result as string
-    }
-    reader.readAsDataURL(file)
-  }
-}
-
-const handleRemoveImage = () => {
-  imageFile.value = null
-  imagePreview.value = null
-}
-
 // Topic management
 const addTopic = () => {
   if (topicInput.value.trim()) {
-    newTraining.value.topics.push(topicInput.value.trim())
+    trainingDialog.formData.value.topics.push(topicInput.value.trim())
     topicInput.value = ''
   }
 }
 
 const removeTopic = (index: number) => {
-  newTraining.value.topics.splice(index, 1)
+  trainingDialog.formData.value.topics.splice(index, 1)
 }
 
 // Admin functions
-const handleAddTraining = () => {
-  if (props.userType !== 'admin') return
-  editingTraining.value = null
-  newTraining.value = {
-    name: '',
-    description: '',
-    location: '',
-    start_date_time: '',
-    end_date_time: '',
-    capacity: 0,
-    topics: [],
-  }
-  imageFile.value = null
-  imagePreview.value = null
-  showTrainingDialog.value = true
-}
+const handleAddTraining = () => trainingDialog.openForCreate()
 
 const handleEditTraining = (training: any) => {
-  if (props.userType !== 'admin') return
-  editingTraining.value = training
-  newTraining.value = {
+  // Convert ISO datetime to datetime-local format (YYYY-MM-DDTHH:mm)
+  const formatDateTimeLocal = (isoString: string) => {
+    const date = new Date(isoString)
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const hours = String(date.getHours()).padStart(2, '0')
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+    return `${year}-${month}-${day}T${hours}:${minutes}`
+  }
+
+  trainingDialog.openForEdit({
+    id: training.id,
     name: training.name,
     description: training.description || '',
     location: training.location,
-    start_date_time: training.start_date_time,
-    end_date_time: training.end_date_time,
+    start_date_time: formatDateTimeLocal(training.start_date_time),
+    end_date_time: formatDateTimeLocal(training.end_date_time),
     capacity: training.capacity,
     topics: [...training.topics],
-  }
-  imagePreview.value = training.image_url
-  imageFile.value = null
-  showTrainingDialog.value = true
-}
-
-const handleSaveTraining = async () => {
-  if (props.userType !== 'admin') return
-
-  if (
-    !newTraining.value.name ||
-    !newTraining.value.location ||
-    !newTraining.value.start_date_time ||
-    !newTraining.value.end_date_time
-  ) {
-    showSnackbar('Please fill in all required fields', 'error')
-    return
-  }
-
-  try {
-    let result
-    if (editingTraining.value) {
-      result = await updateTraining(
-        editingTraining.value.id,
-        {
-          ...newTraining.value,
-          image_url: imagePreview.value,
-        },
-        imageFile.value,
-      )
-    } else {
-      result = await createTraining(
-        {
-          ...newTraining.value,
-          image_url: null,
-        },
-        imageFile.value,
-      )
-    }
-
-    if (result.success) {
-      showTrainingDialog.value = false
-      showSnackbar(
-        editingTraining.value ? 'Training updated successfully!' : 'Training created successfully!',
-        'success',
-      )
-    } else {
-      showSnackbar(result.error || 'Failed to save training', 'error')
-    }
-  } catch (err: any) {
-    showSnackbar(err.message || 'An error occurred', 'error')
-  }
+  })
 }
 
 const confirmDelete = (type: 'training' | 'registration', id: number) => {
-  deleteTarget.value = { type, id }
-  showDeleteDialog.value = true
-}
-
-const handleDelete = async () => {
-  if (!deleteTarget.value) return
-
-  try {
-    let result
-    if (deleteTarget.value.type === 'training') {
-      result = await deleteTraining(deleteTarget.value.id)
-    } else {
-      result = await deleteRegistration(deleteTarget.value.id)
-    }
-
-    if (result.success) {
-      showDeleteDialog.value = false
-      showSnackbar(
-        `${deleteTarget.value.type.charAt(0).toUpperCase() + deleteTarget.value.type.slice(1)} deleted successfully!`,
-        'success',
-      )
-    } else {
-      showSnackbar(result.error || 'Failed to delete', 'error')
-    }
-  } catch (err: any) {
-    showSnackbar(err.message || 'An error occurred', 'error')
-  }
+  deleteConfirmation.openDialog({ type, id })
 }
 
 const updateRegistrationStatus = async (
@@ -377,32 +407,24 @@ const pageSubtitle = computed(() =>
     : 'Browse and register for upcoming trainings',
 )
 
-const handleSearch = async (query: string) => {
-  if (adminTab.value === 'trainings') {
-    if (query) {
-      await searchTrainings(query)
-    } else {
-      await clearTrainingsSearch()
-    }
-  } else if (adminTab.value === 'registrations') {
-    if (query) {
-      await searchRegistrations(query)
-    } else {
-      await clearRegistrationsSearch()
-    }
-  } else {
-    // For user view, search trainings
-    if (query) {
-      await searchTrainings(query)
-    } else {
-      await clearTrainingsSearch()
-    }
-  }
+// Check if user has already registered for a training
+const getUserRegistration = (trainingId: number) => {
+  return registrations.value.find(
+    (reg) => reg.training_id === trainingId && reg.user_id === authStore.userId,
+  )
 }
 
-const handleSettingsClick = () => {
-  console.log('Settings clicked')
-  // Navigate to settings or open settings dialog
+const getRegistrationStatusText = (status: string) => {
+  switch (status) {
+    case 'confirmed':
+      return 'Registration Confirmed'
+    case 'pending':
+      return 'Waiting for Confirmation'
+    case 'cancelled':
+      return 'Registration Cancelled'
+    default:
+      return 'Register Now'
+  }
 }
 </script>
 
@@ -676,10 +698,15 @@ const handleSettingsClick = () => {
       <!-- Filter Buttons -->
       <v-row class="mb-4">
         <v-col cols="12">
-          <v-btn-toggle v-model="viewFilter" color="primary" variant="outlined" mandatory>
-            <v-btn value="upcoming">Upcoming</v-btn>
-            <v-btn value="current">Current</v-btn>
-            <v-btn value="past">Past</v-btn>
+          <v-btn-toggle
+            v-model="viewFilter"
+            color="primary"
+            variant="outlined"
+            mandatory
+            style="gap: 8px"
+          >
+            <v-btn value="in_progress" style="flex: 1">In Progress</v-btn>
+            <v-btn value="completed" style="flex: 1">Completed</v-btn>
           </v-btn-toggle>
         </v-col>
       </v-row>
@@ -694,7 +721,9 @@ const handleSettingsClick = () => {
       <div v-else-if="filteredTrainings.length === 0" class="text-center py-12">
         <v-card class="pa-12">
           <v-icon icon="mdi-school-outline" size="120" color="grey-lighten-1"></v-icon>
-          <div class="text-h5 text-grey-darken-1 mt-6">No {{ viewFilter }} trainings</div>
+          <div class="text-h5 text-grey-darken-1 mt-6">
+            No {{ viewFilter === 'in_progress' ? 'in progress' : 'completed' }} trainings
+          </div>
           <div class="text-body-1 text-grey mt-2">Check back later for new training sessions</div>
         </v-card>
       </div>
@@ -756,7 +785,33 @@ const handleSettingsClick = () => {
             </v-card-text>
 
             <v-card-actions>
-              <v-btn color="primary" variant="elevated" block @click="openRegisterDialog(training)">
+              <template v-if="getUserRegistration(training.id)">
+                <v-chip
+                  :color="getStatusColor(getUserRegistration(training.id)!.status)"
+                  variant="flat"
+                  size="large"
+                  class="w-100 justify-center"
+                >
+                  <v-icon
+                    :icon="
+                      getUserRegistration(training.id)!.status === 'confirmed'
+                        ? 'mdi-check-circle'
+                        : getUserRegistration(training.id)!.status === 'pending'
+                          ? 'mdi-clock-outline'
+                          : 'mdi-close-circle'
+                    "
+                    start
+                  ></v-icon>
+                  {{ getRegistrationStatusText(getUserRegistration(training.id)!.status) }}
+                </v-chip>
+              </template>
+              <v-btn
+                v-else
+                color="primary"
+                variant="elevated"
+                block
+                @click="openRegisterDialog(training)"
+              >
                 Register Now
               </v-btn>
             </v-card-actions>
@@ -790,14 +845,16 @@ const handleSettingsClick = () => {
     </template>
 
     <!-- Training Dialog (Admin) -->
-    <v-dialog v-if="userType === 'admin'" v-model="showTrainingDialog" max-width="800px">
+    <v-dialog v-if="userType === 'admin'" v-model="trainingDialog.isOpen.value" max-width="800px">
       <v-card>
-        <v-card-title>{{ editingTraining ? 'Edit Training' : 'Add New Training' }}</v-card-title>
+        <v-card-title>{{
+          trainingDialog.isEditing.value ? 'Edit Training' : 'Add New Training'
+        }}</v-card-title>
         <v-card-text>
           <v-row>
             <v-col cols="12">
               <v-text-field
-                v-model="newTraining.name"
+                v-model="trainingDialog.formData.value.name"
                 label="Training Name *"
                 variant="outlined"
                 required
@@ -806,7 +863,7 @@ const handleSettingsClick = () => {
 
             <v-col cols="12">
               <v-textarea
-                v-model="newTraining.description"
+                v-model="trainingDialog.formData.value.description"
                 label="Description"
                 variant="outlined"
                 rows="3"
@@ -815,7 +872,7 @@ const handleSettingsClick = () => {
 
             <v-col cols="12" sm="6">
               <v-text-field
-                v-model="newTraining.location"
+                v-model="trainingDialog.formData.value.location"
                 label="Location *"
                 variant="outlined"
                 required
@@ -824,7 +881,7 @@ const handleSettingsClick = () => {
 
             <v-col cols="12" sm="6">
               <v-text-field
-                v-model.number="newTraining.capacity"
+                v-model.number="trainingDialog.formData.value.capacity"
                 label="Capacity"
                 type="number"
                 variant="outlined"
@@ -834,7 +891,7 @@ const handleSettingsClick = () => {
 
             <v-col cols="12" sm="6">
               <v-text-field
-                v-model="newTraining.start_date_time"
+                v-model="trainingDialog.formData.value.start_date_time"
                 label="Start Date & Time *"
                 type="datetime-local"
                 variant="outlined"
@@ -844,7 +901,7 @@ const handleSettingsClick = () => {
 
             <v-col cols="12" sm="6">
               <v-text-field
-                v-model="newTraining.end_date_time"
+                v-model="trainingDialog.formData.value.end_date_time"
                 label="End Date & Time *"
                 type="datetime-local"
                 variant="outlined"
@@ -874,7 +931,7 @@ const handleSettingsClick = () => {
               </v-row>
               <div class="d-flex flex-wrap gap-2 mt-2">
                 <v-chip
-                  v-for="(topic, index) in newTraining.topics"
+                  v-for="(topic, index) in trainingDialog.formData.value.topics"
                   :key="index"
                   closable
                   @click:close="removeTopic(index)"
@@ -904,7 +961,7 @@ const handleSettingsClick = () => {
                   color="error"
                   class="position-absolute"
                   style="top: 8px; right: 8px"
-                  @click="handleRemoveImage"
+                  @click="removeImage"
                 ></v-btn>
               </div>
             </v-col>
@@ -913,9 +970,14 @@ const handleSettingsClick = () => {
 
         <v-card-actions class="px-6 pb-6">
           <v-spacer></v-spacer>
-          <v-btn variant="outlined" @click="showTrainingDialog = false">Cancel</v-btn>
-          <v-btn color="primary" variant="elevated" @click="handleSaveTraining">
-            {{ editingTraining ? 'Update' : 'Create' }}
+          <v-btn variant="outlined" @click="trainingDialog.close">Cancel</v-btn>
+          <v-btn
+            color="primary"
+            variant="elevated"
+            :loading="trainingDialog.isSubmitting.value"
+            @click="trainingDialog.submit"
+          >
+            {{ trainingDialog.isEditing.value ? 'Update' : 'Create' }}
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -962,28 +1024,23 @@ const handleSettingsClick = () => {
     </v-dialog>
 
     <!-- Delete Confirmation Dialog -->
-    <v-dialog v-model="showDeleteDialog" max-width="400px">
-      <v-card>
-        <v-card-title>Confirm Delete</v-card-title>
-        <v-card-text>
-          Are you sure you want to delete this {{ deleteTarget?.type }}? This action cannot be
-          undone.
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn variant="outlined" @click="showDeleteDialog = false">Cancel</v-btn>
-          <v-btn color="error" variant="elevated" @click="handleDelete">Delete</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <DeleteConfirmDialog
+      v-model="deleteConfirmation.isOpen.value"
+      :is-deleting="deleteConfirmation.isDeleting.value"
+      title="Confirm Delete"
+      :message="`Are you sure you want to delete this ${deleteConfirmation.itemToDelete.value?.type || 'item'}? This action cannot be undone.`"
+      @confirm="deleteConfirmation.confirmDelete"
+      @cancel="deleteConfirmation.closeDialog"
+    />
 
     <!-- Snackbar for notifications -->
-    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
-      {{ snackbarMessage }}
-      <template v-slot:actions>
-        <v-btn variant="text" @click="snackbar = false">Close</v-btn>
-      </template>
-    </v-snackbar>
+    <AppSnackbar
+      v-model="snackbar"
+      :message="snackbarMessage"
+      :color="snackbarColor"
+      :timeout="3000"
+      location="top"
+    />
   </div>
 </template>
 

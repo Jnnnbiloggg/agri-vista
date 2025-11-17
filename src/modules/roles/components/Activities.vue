@@ -3,7 +3,16 @@ import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useActivities } from '../composables/useActivities'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useImageHandler } from '@/composables/useImageHandler'
+import { useDeleteConfirmation } from '@/composables/useDeleteConfirmation'
+import { useFormDialog } from '@/composables/useFormDialog'
+import { usePageActions } from '@/composables/usePageActions'
+import { formatDate, formatTime } from '@/utils/formatters'
+import { getStatusColor } from '@/utils/statusHelpers'
 import HeaderActions from './shared/HeaderActions.vue'
+import AppSnackbar from '@/components/shared/AppSnackbar.vue'
+import DeleteConfirmDialog from '@/components/shared/DeleteConfirmDialog.vue'
 
 interface Props {
   userType: 'admin' | 'user'
@@ -68,44 +77,74 @@ const { isLoading: isLoadingMore } = useInfiniteScroll({
   hasMore: () => props.userType === 'user' && activitiesPage.value < activitiesTotalPages.value,
 })
 
-// Dialog states
-const showAppointmentDialog = ref(false)
-const showBookingDialog = ref(false)
-const showActivityDialog = ref(false)
-const showDeleteDialog = ref(false)
-const selectedActivity = ref<any | null>(null)
-const editingActivity = ref<any | null>(null)
-const deleteTarget = ref<{ type: 'activity' | 'booking' | 'appointment'; id: number } | null>(null)
+// Use snackbar composable
+const { snackbar, snackbarMessage, snackbarColor, showSnackbar } = useSnackbar()
 
-// Snackbar
-const snackbar = ref(false)
-const snackbarMessage = ref('')
-const snackbarColor = ref('success')
+// Use delete confirmation composable
+const deleteConfirmation = useDeleteConfirmation<{
+  type: 'activity' | 'booking' | 'appointment'
+  id: number
+}>({
+  onDelete: async (target) => {
+    if (target.type === 'activity') {
+      const result = await deleteActivity(target.id)
+      return { success: result.success, error: result.error || undefined }
+    } else if (target.type === 'booking') {
+      const result = await deleteBooking(target.id)
+      return { success: result.success, error: result.error || undefined }
+    } else {
+      const result = await deleteAppointment(target.id)
+      return { success: result.success, error: result.error || undefined }
+    }
+  },
+  showSnackbar,
+  successMessage: (target) =>
+    `${target.type.charAt(0).toUpperCase() + target.type.slice(1)} deleted successfully`,
+  errorMessage: (target) => `Failed to delete ${target.type}`,
+})
+
+// Use page actions composable
+const { handleSearch, handleClearSearch, handleSettingsClick } = usePageActions({
+  userType: props.userType,
+  onSearch: async (query: string) => {
+    if (props.userType === 'admin') {
+      if (adminTab.value === 'activities') {
+        if (query) {
+          await searchActivities(query)
+        } else {
+          await clearActivitiesSearch()
+        }
+      } else if (adminTab.value === 'bookings') {
+        if (query) {
+          await searchBookings(query)
+        } else {
+          await clearBookingsSearch()
+        }
+      } else {
+        if (query) {
+          await searchAppointments(query)
+        } else {
+          await clearAppointmentsSearch()
+        }
+      }
+    } else {
+      if (query) {
+        await searchActivities(query)
+      } else {
+        await clearActivitiesSearch()
+      }
+    }
+  },
+})
+
+// Use image handler composable
+const { imageFile, imagePreview, handleImageSelect, removeImage } = useImageHandler({
+  maxSizeInMB: 5,
+  allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
+})
 
 // Admin tab
 const adminTab = ref('activities')
-
-// Forms
-const appointmentForm = ref({
-  full_name: userName.value,
-  email: userEmail.value,
-  contact_number: '',
-  appointment_type: '',
-  date: '',
-  time: '',
-  note: '',
-})
-
-const newActivity = ref({
-  name: '',
-  description: '',
-  type: '',
-  capacity: 0,
-  location: '',
-})
-
-const imageFile = ref<File | null>(null)
-const imagePreview = ref<string | null>(null)
 
 const appointmentTypes = [
   'Farm Tour',
@@ -116,6 +155,132 @@ const appointmentTypes = [
 ]
 
 const activityTypes = ['Workshop', 'Tour', 'Harvesting', 'Training', 'Event']
+
+// Use form dialog for appointment form (user)
+const appointmentDialog = useFormDialog<{
+  full_name: string
+  email: string
+  contact_number: string
+  appointment_type: string
+  date: string
+  time: string
+  note: string
+}>({
+  initialData: () => ({
+    full_name: userName.value,
+    email: userEmail.value,
+    contact_number: '',
+    appointment_type: '',
+    date: '',
+    time: '',
+    note: '',
+  }),
+  validate: (data) => {
+    if (!data.contact_number || !data.appointment_type || !data.date || !data.time) {
+      return { valid: false, message: 'Please fill in all required fields' }
+    }
+    return { valid: true }
+  },
+  onSubmit: async (data): Promise<{ success: boolean; error?: string }> => {
+    const result = await createAppointment({ ...data, status: 'pending' })
+    return {
+      success: result.success,
+      error: result.error || undefined,
+    }
+  },
+  showSnackbar,
+  successMessage: {
+    create: 'Appointment scheduled successfully!',
+    update: 'Appointment updated successfully!',
+  },
+  errorMessage: {
+    create: 'Failed to schedule appointment',
+    update: 'Failed to update appointment',
+  },
+})
+
+// Booking dialog (user) - simplified single action
+const selectedActivity = ref<any | null>(null)
+const showBookingDialog = ref(false)
+const openBookingDialog = (activity: any) => {
+  selectedActivity.value = activity
+  showBookingDialog.value = true
+}
+const confirmBooking = async () => {
+  if (!selectedActivity.value) return
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    const result = await createBooking({
+      activity_id: selectedActivity.value.id,
+      activity_name: selectedActivity.value.name,
+      booking_date: today,
+      status: 'pending',
+    })
+    if (result.success) {
+      showBookingDialog.value = false
+      showSnackbar('Booking created successfully!', 'success')
+    } else {
+      showSnackbar(result.error || 'Failed to create booking', 'error')
+    }
+  } catch (err: any) {
+    showSnackbar(err.message || 'An error occurred', 'error')
+  }
+}
+
+// Use form dialog for activity management (admin)
+const activityDialog = useFormDialog<{
+  name: string
+  description: string
+  type: string
+  capacity: number
+  location: string
+  image_url?: string | null
+  id?: number
+}>({
+  initialData: () => ({
+    name: '',
+    description: '',
+    type: '',
+    capacity: 0,
+    location: '',
+    image_url: null,
+  }),
+  validate: (data) => {
+    if (!data.name || !data.description || !data.type || !data.capacity || !data.location) {
+      return { valid: false, message: 'Please fill in all required fields' }
+    }
+    return { valid: true }
+  },
+  onSubmit: async (data, isEditing): Promise<{ success: boolean; error?: string }> => {
+    let result
+    if (isEditing && data.id) {
+      result = await updateActivity(
+        data.id,
+        { ...data, image_url: imagePreview.value },
+        imageFile.value,
+      )
+    } else {
+      result = await createActivity({ ...data, image_url: imagePreview.value }, imageFile.value)
+    }
+    return {
+      success: result.success,
+      error: result.error || undefined,
+    }
+  },
+  onOpen: () => {
+    imageFile.value = null
+    imagePreview.value = activityDialog.editingItem.value?.image_url || null
+  },
+  showSnackbar,
+  successMessage: {
+    create: 'Activity created successfully!',
+    update: 'Activity updated successfully!',
+  },
+  errorMessage: {
+    create: 'Failed to save activity',
+    update: 'Failed to save activity',
+  },
+})
 
 // Load data on component mount
 onMounted(async () => {
@@ -129,205 +294,12 @@ onMounted(async () => {
   setupRealtimeSubscriptions()
 })
 
-// Image handling
-const handleImageSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-
-  if (file) {
-    imageFile.value = file
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      imagePreview.value = e.target?.result as string
-    }
-    reader.readAsDataURL(file)
-  }
-}
-
-const handleRemoveImage = () => {
-  imageFile.value = null
-  imagePreview.value = null
-}
-
-// User functions
-const openAppointmentForm = () => {
-  appointmentForm.value = {
-    full_name: userName.value,
-    email: userEmail.value,
-    contact_number: '',
-    appointment_type: '',
-    date: '',
-    time: '',
-    note: '',
-  }
-  showAppointmentDialog.value = true
-}
-
-const submitAppointment = async () => {
-  if (
-    !appointmentForm.value.contact_number ||
-    !appointmentForm.value.appointment_type ||
-    !appointmentForm.value.date ||
-    !appointmentForm.value.time
-  ) {
-    showSnackbar('Please fill in all required fields', 'error')
-    return
-  }
-
-  try {
-    const result = await createAppointment({
-      ...appointmentForm.value,
-      status: 'pending',
-    })
-    if (result.success) {
-      showAppointmentDialog.value = false
-      showSnackbar('Appointment scheduled successfully!', 'success')
-    } else {
-      showSnackbar(result.error || 'Failed to schedule appointment', 'error')
-    }
-  } catch (err: any) {
-    showSnackbar(err.message || 'An error occurred', 'error')
-  }
-}
-
-const openBookingDialog = (activity: any) => {
-  selectedActivity.value = activity
-  showBookingDialog.value = true
-}
-
-const confirmBooking = async () => {
-  if (!selectedActivity.value) return
-
-  try {
-    const today = new Date().toISOString().split('T')[0]
-    const result = await createBooking({
-      activity_id: selectedActivity.value.id,
-      activity_name: selectedActivity.value.name,
-      booking_date: today,
-      status: 'pending',
-    })
-
-    if (result.success) {
-      showBookingDialog.value = false
-      showSnackbar('Booking created successfully!', 'success')
-    } else {
-      showSnackbar(result.error || 'Failed to create booking', 'error')
-    }
-  } catch (err: any) {
-    showSnackbar(err.message || 'An error occurred', 'error')
-  }
-}
-
 // Admin functions
-const handleAddActivity = () => {
-  editingActivity.value = null
-  newActivity.value = {
-    name: '',
-    description: '',
-    type: '',
-    capacity: 0,
-    location: '',
-  }
-  imageFile.value = null
-  imagePreview.value = null
-  showActivityDialog.value = true
-}
-
-const handleEditActivity = (activity: any) => {
-  editingActivity.value = activity
-  newActivity.value = {
-    name: activity.name,
-    description: activity.description,
-    type: activity.type,
-    capacity: activity.capacity,
-    location: activity.location,
-  }
-  imagePreview.value = activity.image_url
-  imageFile.value = null
-  showActivityDialog.value = true
-}
-
-const handleSaveActivity = async () => {
-  if (
-    !newActivity.value.name ||
-    !newActivity.value.description ||
-    !newActivity.value.type ||
-    !newActivity.value.capacity ||
-    !newActivity.value.location
-  ) {
-    showSnackbar('Please fill in all required fields', 'error')
-    return
-  }
-
-  try {
-    let result
-    if (editingActivity.value) {
-      result = await updateActivity(
-        editingActivity.value.id,
-        {
-          ...newActivity.value,
-          image_url: imagePreview.value,
-        },
-        imageFile.value,
-      )
-    } else {
-      result = await createActivity(
-        {
-          ...newActivity.value,
-          image_url: imagePreview.value,
-        },
-        imageFile.value,
-      )
-    }
-
-    if (result.success) {
-      showActivityDialog.value = false
-      showSnackbar(
-        editingActivity.value ? 'Activity updated successfully!' : 'Activity created successfully!',
-        'success',
-      )
-    } else {
-      showSnackbar(result.error || 'Failed to save activity', 'error')
-    }
-  } catch (err: any) {
-    showSnackbar(err.message || 'An error occurred', 'error')
-  }
-}
+const handleAddActivity = () => activityDialog.openForCreate()
+const handleEditActivity = (activity: any) => activityDialog.openForEdit(activity)
 
 const confirmDelete = (type: 'activity' | 'booking' | 'appointment', id: number) => {
-  deleteTarget.value = { type, id }
-  showDeleteDialog.value = true
-}
-
-const handleDelete = async () => {
-  if (!deleteTarget.value) return
-
-  try {
-    let result
-    switch (deleteTarget.value.type) {
-      case 'activity':
-        result = await deleteActivity(deleteTarget.value.id)
-        break
-      case 'booking':
-        result = await deleteBooking(deleteTarget.value.id)
-        break
-      case 'appointment':
-        result = await deleteAppointment(deleteTarget.value.id)
-        break
-    }
-
-    if (result.success) {
-      showDeleteDialog.value = false
-      showSnackbar(
-        `${deleteTarget.value.type.charAt(0).toUpperCase() + deleteTarget.value.type.slice(1)} deleted successfully!`,
-        'success',
-      )
-    } else {
-      showSnackbar(result.error || 'Failed to delete', 'error')
-    }
-  } catch (err: any) {
-    showSnackbar(err.message || 'An error occurred', 'error')
-  }
+  deleteConfirmation.openDialog({ type, id })
 }
 
 const updateBookingStatus = async (
@@ -409,25 +381,6 @@ const downloadAppointments = () => {
   link.click()
 }
 
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'pending':
-      return 'warning'
-    case 'confirmed':
-      return 'success'
-    case 'cancelled':
-      return 'error'
-    default:
-      return 'grey'
-  }
-}
-
-const showSnackbar = (message: string, color: string = 'success') => {
-  snackbarMessage.value = message
-  snackbarColor.value = color
-  snackbar.value = true
-}
-
 const activityHeaders = [
   { title: 'Activity', key: 'name' },
   { title: 'Type', key: 'type' },
@@ -459,77 +412,6 @@ const pageSubtitle = computed(() =>
     ? 'Manage farm activities, bookings, and appointments'
     : 'Explore and book farm activities',
 )
-
-const handleSearch = async (query: string) => {
-  if (props.userType === 'admin') {
-    switch (adminTab.value) {
-      case 'activities':
-        if (query) {
-          await searchActivities(query)
-        } else {
-          await clearActivitiesSearch()
-        }
-        break
-      case 'bookings':
-        if (query) {
-          await searchBookings(query)
-        } else {
-          await clearBookingsSearch()
-        }
-        break
-      case 'appointments':
-        if (query) {
-          await searchAppointments(query)
-        } else {
-          await clearAppointmentsSearch()
-        }
-        break
-    }
-  } else {
-    if (query) {
-      await searchActivities(query)
-    } else {
-      await clearActivitiesSearch()
-    }
-  }
-}
-
-const handleClearSearch = async () => {
-  if (props.userType === 'admin') {
-    switch (adminTab.value) {
-      case 'activities':
-        await clearActivitiesSearch()
-        break
-      case 'bookings':
-        await clearBookingsSearch()
-        break
-      case 'appointments':
-        await clearAppointmentsSearch()
-        break
-    }
-  } else {
-    await clearActivitiesSearch()
-  }
-}
-
-const handleSettingsClick = () => {
-  console.log('Settings clicked')
-}
-
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-}
-
-const formatTime = (timeString: string) => {
-  return new Date(`2000-01-01T${timeString}`).toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 </script>
 
 <template>
@@ -561,7 +443,7 @@ const formatTime = (timeString: string) => {
             color="success"
             variant="elevated"
             prepend-icon="mdi-calendar-check"
-            @click="openAppointmentForm"
+            @click="appointmentDialog.openForCreate"
           >
             Appointment Form
           </v-btn>
@@ -973,15 +855,15 @@ const formatTime = (timeString: string) => {
     </template>
 
     <!-- Appointment Form Dialog -->
-    <v-dialog v-model="showAppointmentDialog" max-width="600px">
+    <v-dialog v-model="appointmentDialog.isOpen.value" max-width="600px">
       <v-card>
         <v-card-title>Schedule an Appointment</v-card-title>
         <v-card-text>
-          <v-form @submit.prevent="submitAppointment">
+          <v-form @submit.prevent="appointmentDialog.submit">
             <v-row>
               <v-col cols="12">
                 <v-text-field
-                  v-model="appointmentForm.full_name"
+                  v-model="appointmentDialog.formData.value.full_name"
                   label="Full Name"
                   variant="outlined"
                   readonly
@@ -990,7 +872,7 @@ const formatTime = (timeString: string) => {
 
               <v-col cols="12">
                 <v-text-field
-                  v-model="appointmentForm.email"
+                  v-model="appointmentDialog.formData.value.email"
                   label="Email Address"
                   variant="outlined"
                   readonly
@@ -999,7 +881,7 @@ const formatTime = (timeString: string) => {
 
               <v-col cols="12">
                 <v-text-field
-                  v-model="appointmentForm.contact_number"
+                  v-model="appointmentDialog.formData.value.contact_number"
                   label="Contact Number *"
                   variant="outlined"
                   required
@@ -1008,7 +890,7 @@ const formatTime = (timeString: string) => {
 
               <v-col cols="12">
                 <v-select
-                  v-model="appointmentForm.appointment_type"
+                  v-model="appointmentDialog.formData.value.appointment_type"
                   label="Appointment Type *"
                   :items="appointmentTypes"
                   variant="outlined"
@@ -1018,7 +900,7 @@ const formatTime = (timeString: string) => {
 
               <v-col cols="12" md="6">
                 <v-text-field
-                  v-model="appointmentForm.date"
+                  v-model="appointmentDialog.formData.value.date"
                   label="Date *"
                   type="date"
                   variant="outlined"
@@ -1028,7 +910,7 @@ const formatTime = (timeString: string) => {
 
               <v-col cols="12" md="6">
                 <v-text-field
-                  v-model="appointmentForm.time"
+                  v-model="appointmentDialog.formData.value.time"
                   label="Time *"
                   type="time"
                   variant="outlined"
@@ -1038,7 +920,7 @@ const formatTime = (timeString: string) => {
 
               <v-col cols="12">
                 <v-textarea
-                  v-model="appointmentForm.note"
+                  v-model="appointmentDialog.formData.value.note"
                   label="Note/Request"
                   variant="outlined"
                   rows="4"
@@ -1050,8 +932,13 @@ const formatTime = (timeString: string) => {
 
         <v-card-actions class="px-6 pb-6">
           <v-spacer></v-spacer>
-          <v-btn variant="outlined" @click="showAppointmentDialog = false">Cancel</v-btn>
-          <v-btn color="primary" variant="elevated" @click="submitAppointment">
+          <v-btn variant="outlined" @click="appointmentDialog.close">Cancel</v-btn>
+          <v-btn
+            color="primary"
+            variant="elevated"
+            :loading="appointmentDialog.isSubmitting.value"
+            @click="appointmentDialog.submit"
+          >
             Confirm Appointment
           </v-btn>
         </v-card-actions>
@@ -1111,13 +998,13 @@ const formatTime = (timeString: string) => {
     </v-dialog>
 
     <!-- Admin Activity Dialog -->
-    <v-dialog v-if="userType === 'admin'" v-model="showActivityDialog" max-width="700px">
+    <v-dialog v-if="userType === 'admin'" v-model="activityDialog.isOpen.value" max-width="700px">
       <v-card>
         <v-card-title>
-          {{ editingActivity ? 'Edit Activity' : 'New Activity' }}
+          {{ activityDialog.isEditing.value ? 'Edit Activity' : 'New Activity' }}
         </v-card-title>
         <v-card-text>
-          <v-form @submit.prevent="handleSaveActivity">
+          <v-form @submit.prevent="activityDialog.submit">
             <v-row>
               <v-col cols="12">
                 <div class="text-subtitle-2 mb-2">Activity Image</div>
@@ -1130,7 +1017,7 @@ const formatTime = (timeString: string) => {
                     color="error"
                     class="position-absolute"
                     style="top: 8px; right: 8px"
-                    @click="handleRemoveImage"
+                    @click="removeImage"
                   ></v-btn>
                 </div>
 
@@ -1146,7 +1033,7 @@ const formatTime = (timeString: string) => {
 
               <v-col cols="12">
                 <v-text-field
-                  v-model="newActivity.name"
+                  v-model="activityDialog.formData.value.name"
                   label="Activity Name *"
                   variant="outlined"
                   required
@@ -1155,7 +1042,7 @@ const formatTime = (timeString: string) => {
 
               <v-col cols="12">
                 <v-textarea
-                  v-model="newActivity.description"
+                  v-model="activityDialog.formData.value.description"
                   label="Description *"
                   variant="outlined"
                   rows="4"
@@ -1165,7 +1052,7 @@ const formatTime = (timeString: string) => {
 
               <v-col cols="12" md="6">
                 <v-select
-                  v-model="newActivity.type"
+                  v-model="activityDialog.formData.value.type"
                   label="Type *"
                   :items="activityTypes"
                   variant="outlined"
@@ -1175,7 +1062,7 @@ const formatTime = (timeString: string) => {
 
               <v-col cols="12" md="6">
                 <v-text-field
-                  v-model.number="newActivity.capacity"
+                  v-model.number="activityDialog.formData.value.capacity"
                   label="Capacity *"
                   type="number"
                   variant="outlined"
@@ -1185,7 +1072,7 @@ const formatTime = (timeString: string) => {
 
               <v-col cols="12">
                 <v-text-field
-                  v-model="newActivity.location"
+                  v-model="activityDialog.formData.value.location"
                   label="Location *"
                   variant="outlined"
                   required
@@ -1197,37 +1084,35 @@ const formatTime = (timeString: string) => {
 
         <v-card-actions class="px-6 pb-6">
           <v-spacer></v-spacer>
-          <v-btn variant="outlined" @click="showActivityDialog = false">Cancel</v-btn>
-          <v-btn color="primary" variant="elevated" @click="handleSaveActivity">
-            {{ editingActivity ? 'Update' : 'Create' }}
+          <v-btn variant="outlined" @click="activityDialog.close">Cancel</v-btn>
+          <v-btn
+            color="primary"
+            variant="elevated"
+            :loading="activityDialog.isSubmitting.value"
+            @click="activityDialog.submit"
+          >
+            {{ activityDialog.isEditing.value ? 'Update' : 'Create' }}
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
     <!-- Delete Confirmation Dialog -->
-    <v-dialog v-model="showDeleteDialog" max-width="400px">
-      <v-card>
-        <v-card-title class="text-h5">Confirm Delete</v-card-title>
-        <v-card-text>
-          Are you sure you want to delete this {{ deleteTarget?.type }}? This action cannot be
-          undone.
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn variant="outlined" @click="showDeleteDialog = false">Cancel</v-btn>
-          <v-btn color="error" variant="elevated" @click="handleDelete">Delete</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <DeleteConfirmDialog
+      v-model="deleteConfirmation.isOpen.value"
+      :is-deleting="deleteConfirmation.isDeleting.value"
+      title="Confirm Delete"
+      :message="`Are you sure you want to delete this ${deleteConfirmation.itemToDelete.value?.type || 'item'}`"
+      @confirm="deleteConfirmation.confirmDelete"
+    />
 
     <!-- Snackbar -->
-    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
-      {{ snackbarMessage }}
-      <template v-slot:actions>
-        <v-btn variant="text" @click="snackbar = false">Close</v-btn>
-      </template>
-    </v-snackbar>
+    <AppSnackbar
+      v-model="snackbar"
+      :message="snackbarMessage"
+      :color="snackbarColor"
+      :timeout="3000"
+    />
   </div>
 </template>
 

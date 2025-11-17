@@ -3,7 +3,15 @@ import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useProducts } from '../composables/useProducts'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { useFormDialog } from '@/composables/useFormDialog'
+import { useImageHandler } from '@/composables/useImageHandler'
+import { useDeleteConfirmation } from '@/composables/useDeleteConfirmation'
+import { usePageActions } from '@/composables/usePageActions'
+import { formatDate } from '@/utils/formatters'
 import HeaderActions from './shared/HeaderActions.vue'
+import AppSnackbar from '@/components/shared/AppSnackbar.vue'
+import DeleteConfirmDialog from '@/components/shared/DeleteConfirmDialog.vue'
 
 interface Props {
   userType: 'admin' | 'user'
@@ -57,44 +65,179 @@ const { isLoading: isLoadingMore } = useInfiniteScroll({
   hasMore: () => props.userType === 'user' && productsPage.value < productsTotalPages.value,
 })
 
-// Dialog states
-const showProductDialog = ref(false)
-const showReserveDialog = ref(false)
-const showDeleteDialog = ref(false)
+// Use snackbar composable
+const { snackbar, snackbarMessage, snackbarColor, showSnackbar } = useSnackbar()
+
+// Selected product for reservation
 const selectedProduct = ref<any | null>(null)
-const editingProduct = ref<any | null>(null)
-const deleteTarget = ref<{ type: 'product' | 'order'; id: number } | null>(null)
 
-// Snackbar
-const snackbar = ref(false)
-const snackbarMessage = ref('')
-const snackbarColor = ref('success')
+// Use delete confirmation for products and orders
+const deleteConfirmation = useDeleteConfirmation<{ type: 'product' | 'order'; id: number }>({
+  onDelete: async (target) => {
+    if (target.type === 'product') {
+      const result = await deleteProduct(target.id)
+      return { success: result.success, error: result.error || undefined }
+    } else {
+      const result = await deleteOrder(target.id)
+      return { success: result.success, error: result.error || undefined }
+    }
+  },
+  showSnackbar,
+  successMessage: (target) =>
+    `${target.type === 'product' ? 'Product' : 'Order'} deleted successfully`,
+  errorMessage: (target) => `Failed to delete ${target.type}`,
+})
 
-const showSnackbar = (message: string, color: 'success' | 'error' | 'info' = 'success') => {
-  snackbarMessage.value = message
-  snackbarColor.value = color
-  snackbar.value = true
-}
+// Use page actions composable
+const { handleSearch, handleClearSearch, handleSettingsClick } = usePageActions({
+  userType: props.userType,
+  onSearch: async (query: string) => {
+    if (adminTab.value === 'products') {
+      if (query) {
+        await searchProducts(query)
+      } else {
+        await clearProductsSearch()
+      }
+    } else {
+      if (query) {
+        await searchOrders(query)
+      } else {
+        await clearOrdersSearch()
+      }
+    }
+  },
+})
 
 // Admin tab
 const adminTab = ref('products')
 
-const newProduct = ref({
-  name: '',
-  category: '',
-  description: '',
-  price: 0,
-  stock: 0,
-})
-
-const reserveForm = ref({
-  quantity: 1,
-})
-
-const imageFiles = ref<File[]>([])
-const imagePreviews = ref<string[]>([])
-
 const categories = ['Fruits', 'Vegetables', 'Herbs', 'Seeds', 'Other']
+
+// Use image handler (supports single image only)
+const {
+  imagePreviews,
+  imageFiles,
+  handleImageSelect,
+  removeImageAtIndex,
+  clearAllImages,
+  error: imageError,
+} = useImageHandler({
+  multiple: false,
+  maxSizeInMB: 5,
+  allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
+})
+
+// Product dialog (admin)
+interface ProductForm {
+  id?: number
+  name: string
+  category: string
+  description: string
+  price: number
+  stock: number
+}
+
+const productDialog = useFormDialog<ProductForm>({
+  initialData: {
+    name: '',
+    category: '',
+    description: '',
+    price: 0,
+    stock: 0,
+  },
+  onOpen: () => {
+    clearAllImages()
+    // Load existing image for edit mode from editingItem parameter
+    const editingProduct = productDialog.editingItem.value as any
+    if (editingProduct?.images && editingProduct.images.length > 0) {
+      imagePreviews.value = [editingProduct.images[0]]
+    }
+  },
+  onSubmit: async (formData) => {
+    if (!formData.name || !formData.category || !formData.price) {
+      return { success: false, error: 'Please fill in all required fields' }
+    }
+
+    try {
+      let result
+      if (formData.id) {
+        result = await updateProduct(
+          formData.id,
+          {
+            name: formData.name,
+            category: formData.category,
+            description: formData.description,
+            price: formData.price,
+            stock: formData.stock,
+            images: imagePreviews.value.filter((url) => url.startsWith('http')).slice(0, 1),
+          },
+          imageFiles.value.slice(0, 1),
+        )
+      } else {
+        result = await createProduct(
+          {
+            name: formData.name,
+            category: formData.category,
+            description: formData.description,
+            price: formData.price,
+            stock: formData.stock,
+            images: [],
+          },
+          imageFiles.value.slice(0, 1),
+        )
+      }
+
+      if (result.success) {
+        return { success: true }
+      } else {
+        return { success: false, error: result.error || 'Failed to save product' }
+      }
+    } catch (err: any) {
+      return { success: false, error: err.message || 'An error occurred' }
+    }
+  },
+  showSnackbar,
+})
+
+// Reservation dialog (user)
+interface ReservationForm {
+  quantity: number
+}
+
+const reservationDialog = useFormDialog<ReservationForm>({
+  initialData: {
+    quantity: 1,
+  },
+  onSubmit: async (formData) => {
+    if (!selectedProduct.value) {
+      return { success: false, error: 'No product selected' }
+    }
+
+    if (formData.quantity > selectedProduct.value.stock) {
+      return { success: false, error: 'Quantity exceeds available stock' }
+    }
+
+    try {
+      const totalPrice = selectedProduct.value.price * formData.quantity
+      const result = await createOrder({
+        product_id: selectedProduct.value.id,
+        product_name: selectedProduct.value.name,
+        quantity: formData.quantity,
+        total_price: totalPrice,
+        order_status: 'pending',
+      })
+
+      if (result.success) {
+        return { success: true }
+      } else {
+        return { success: false, error: result.error || 'Failed to place order' }
+      }
+    } catch (err: any) {
+      return { success: false, error: err.message || 'An error occurred' }
+    }
+  },
+  showSnackbar,
+})
 
 // Load data on component mount
 onMounted(async () => {
@@ -107,130 +250,22 @@ onMounted(async () => {
   setupRealtimeSubscriptions()
 })
 
-// Image handling
-const handleImageSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const files = Array.from(target.files || [])
-
-  imageFiles.value = files
-  imagePreviews.value = []
-
-  files.forEach((file) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      imagePreviews.value.push(e.target?.result as string)
-    }
-    reader.readAsDataURL(file)
-  })
-}
-
-const removeImage = (index: number) => {
-  imagePreviews.value.splice(index, 1)
-  imageFiles.value.splice(index, 1)
-}
-
 // Admin functions
-const handleAddProduct = () => {
-  if (props.userType !== 'admin') return
-  editingProduct.value = null
-  newProduct.value = {
-    name: '',
-    category: '',
-    description: '',
-    price: 0,
-    stock: 0,
-  }
-  imageFiles.value = []
-  imagePreviews.value = []
-  showProductDialog.value = true
-}
+const handleAddProduct = () => productDialog.openForCreate()
 
 const handleEditProduct = (product: any) => {
-  if (props.userType !== 'admin') return
-  editingProduct.value = product
-  newProduct.value = {
+  productDialog.openForEdit({
+    id: product.id,
     name: product.name,
     category: product.category,
     description: product.description || '',
     price: product.price,
     stock: product.stock,
-  }
-  imagePreviews.value = product.images ? [...product.images] : []
-  imageFiles.value = []
-  showProductDialog.value = true
-}
-
-const handleSaveProduct = async () => {
-  if (props.userType !== 'admin') return
-
-  if (!newProduct.value.name || !newProduct.value.category || !newProduct.value.price) {
-    showSnackbar('Please fill in all required fields', 'error')
-    return
-  }
-
-  try {
-    let result
-    if (editingProduct.value) {
-      result = await updateProduct(
-        editingProduct.value.id,
-        {
-          ...newProduct.value,
-          images: imagePreviews.value.filter((url) => url.startsWith('http')), // Keep existing URLs
-        },
-        imageFiles.value,
-      )
-    } else {
-      result = await createProduct(
-        {
-          ...newProduct.value,
-          images: [], // Will be updated by composable with uploaded images
-        },
-        imageFiles.value,
-      )
-    }
-
-    if (result.success) {
-      showProductDialog.value = false
-      showSnackbar(
-        editingProduct.value ? 'Product updated successfully!' : 'Product created successfully!',
-        'success',
-      )
-    } else {
-      showSnackbar(result.error || 'Failed to save product', 'error')
-    }
-  } catch (err: any) {
-    showSnackbar(err.message || 'An error occurred', 'error')
-  }
+  })
 }
 
 const confirmDelete = (type: 'product' | 'order', id: number) => {
-  deleteTarget.value = { type, id }
-  showDeleteDialog.value = true
-}
-
-const handleDelete = async () => {
-  if (!deleteTarget.value) return
-
-  try {
-    let result
-    if (deleteTarget.value.type === 'product') {
-      result = await deleteProduct(deleteTarget.value.id)
-    } else {
-      result = await deleteOrder(deleteTarget.value.id)
-    }
-
-    if (result.success) {
-      showDeleteDialog.value = false
-      showSnackbar(
-        `${deleteTarget.value.type.charAt(0).toUpperCase() + deleteTarget.value.type.slice(1)} deleted successfully!`,
-        'success',
-      )
-    } else {
-      showSnackbar(result.error || 'Failed to delete', 'error')
-    }
-  } catch (err: any) {
-    showSnackbar(err.message || 'An error occurred', 'error')
-  }
+  deleteConfirmation.openDialog({ type, id })
 }
 
 const updateOrderStatus = async (
@@ -276,37 +311,7 @@ const downloadSalesHistory = () => {
 const handleReserve = (product: any) => {
   if (product.stock === 0) return
   selectedProduct.value = product
-  reserveForm.value.quantity = 1
-  showReserveDialog.value = true
-}
-
-const submitReservation = async () => {
-  if (!selectedProduct.value) return
-
-  if (reserveForm.value.quantity > selectedProduct.value.stock) {
-    showSnackbar('Quantity exceeds available stock', 'error')
-    return
-  }
-
-  try {
-    const totalPrice = selectedProduct.value.price * reserveForm.value.quantity
-    const result = await createOrder({
-      product_id: selectedProduct.value.id,
-      product_name: selectedProduct.value.name,
-      quantity: reserveForm.value.quantity,
-      total_price: totalPrice,
-      order_status: 'pending',
-    })
-
-    if (result.success) {
-      showReserveDialog.value = false
-      showSnackbar('Order placed successfully!', 'success')
-    } else {
-      showSnackbar(result.error || 'Failed to place order', 'error')
-    }
-  } catch (err: any) {
-    showSnackbar(err.message || 'An error occurred', 'error')
-  }
+  reservationDialog.openForCreate()
 }
 
 const getStatusColor = (status: string) => {
@@ -347,36 +352,6 @@ const pageSubtitle = computed(() =>
     ? 'Manage products and orders'
     : 'Browse and reserve fresh farm products',
 )
-
-const handleSearch = async (query: string) => {
-  if (props.userType === 'admin') {
-    if (adminTab.value === 'products') {
-      if (query) {
-        await searchProducts(query)
-      } else {
-        await clearProductsSearch()
-      }
-    } else if (adminTab.value === 'orders') {
-      if (query) {
-        await searchOrders(query)
-      } else {
-        await clearOrdersSearch()
-      }
-    }
-  } else {
-    // For user view, search products
-    if (query) {
-      await searchProducts(query)
-    } else {
-      await clearProductsSearch()
-    }
-  }
-}
-
-const handleSettingsClick = () => {
-  console.log('Settings clicked')
-  // Navigate to settings or open settings dialog
-}
 </script>
 
 <template>
@@ -658,16 +633,12 @@ const handleSettingsClick = () => {
       <v-row v-else>
         <v-col v-for="product in products" :key="product.id" cols="12" sm="6" md="4" lg="3">
           <v-card class="fill-height">
-            <v-carousel
+            <v-img
               v-if="product.images.length > 0"
+              :src="product.images[0]"
               height="200"
-              hide-delimiters
-              show-arrows="hover"
-            >
-              <v-carousel-item v-for="(image, i) in product.images" :key="i">
-                <v-img :src="image" height="200" cover></v-img>
-              </v-carousel-item>
-            </v-carousel>
+              cover
+            ></v-img>
             <div
               v-else
               class="bg-grey-lighten-3 d-flex align-center justify-center"
@@ -734,49 +705,50 @@ const handleSettingsClick = () => {
     </template>
 
     <!-- Admin Product Dialog -->
-    <v-dialog v-if="userType === 'admin'" v-model="showProductDialog" max-width="700px">
+    <v-dialog v-if="userType === 'admin'" v-model="productDialog.isOpen.value" max-width="700px">
       <v-card>
         <v-card-title>
-          {{ editingProduct ? 'Edit Product' : 'New Product' }}
+          {{ productDialog.isEditing.value ? 'Edit Product' : 'New Product' }}
         </v-card-title>
         <v-card-text>
-          <v-form @submit.prevent="handleSaveProduct">
+          <v-form @submit.prevent="productDialog.submit">
             <v-row>
               <!-- Image Upload -->
               <v-col cols="12">
-                <div class="text-subtitle-2 mb-2">Product Images</div>
+                <div class="text-subtitle-2 mb-2">Product Image</div>
 
                 <div v-if="imagePreviews.length > 0" class="mb-4">
-                  <v-row>
-                    <v-col v-for="(preview, index) in imagePreviews" :key="index" cols="4">
-                      <div class="position-relative">
-                        <v-img :src="preview" height="120" cover class="rounded"></v-img>
-                        <v-btn
-                          icon="mdi-close"
-                          size="x-small"
-                          color="error"
-                          class="position-absolute"
-                          style="top: 4px; right: 4px"
-                          @click="removeImage(index)"
-                        ></v-btn>
-                      </div>
-                    </v-col>
-                  </v-row>
+                  <div class="position-relative d-inline-block">
+                    <v-img
+                      :src="imagePreviews[0]"
+                      height="200"
+                      width="200"
+                      cover
+                      class="rounded"
+                    ></v-img>
+                    <v-btn
+                      icon="mdi-close"
+                      size="x-small"
+                      color="error"
+                      class="position-absolute"
+                      style="top: 4px; right: 4px"
+                      @click="removeImageAtIndex(0)"
+                    ></v-btn>
+                  </div>
                 </div>
 
                 <v-file-input
                   accept="image/*"
-                  label="Upload Images"
+                  label="Upload Image"
                   prepend-icon="mdi-camera"
                   variant="outlined"
-                  multiple
                   @change="handleImageSelect"
                 ></v-file-input>
               </v-col>
 
               <v-col cols="12">
                 <v-text-field
-                  v-model="newProduct.name"
+                  v-model="productDialog.formData.value.name"
                   label="Product Name *"
                   variant="outlined"
                   required
@@ -785,7 +757,7 @@ const handleSettingsClick = () => {
 
               <v-col cols="12" md="6">
                 <v-select
-                  v-model="newProduct.category"
+                  v-model="productDialog.formData.value.category"
                   label="Category *"
                   :items="categories"
                   variant="outlined"
@@ -795,7 +767,7 @@ const handleSettingsClick = () => {
 
               <v-col cols="12" md="6">
                 <v-text-field
-                  v-model.number="newProduct.price"
+                  v-model.number="productDialog.formData.value.price"
                   label="Price (₱) *"
                   type="number"
                   variant="outlined"
@@ -805,7 +777,7 @@ const handleSettingsClick = () => {
 
               <v-col cols="12">
                 <v-text-field
-                  v-model.number="newProduct.stock"
+                  v-model.number="productDialog.formData.value.stock"
                   label="Stock Availability *"
                   type="number"
                   variant="outlined"
@@ -813,22 +785,36 @@ const handleSettingsClick = () => {
                   hint="Set to 0 if out of stock"
                 ></v-text-field>
               </v-col>
+
+              <v-col cols="12">
+                <v-textarea
+                  v-model="productDialog.formData.value.description"
+                  label="Description"
+                  variant="outlined"
+                  rows="4"
+                ></v-textarea>
+              </v-col>
             </v-row>
           </v-form>
         </v-card-text>
 
         <v-card-actions class="px-6 pb-6">
           <v-spacer></v-spacer>
-          <v-btn variant="outlined" @click="showProductDialog = false">Cancel</v-btn>
-          <v-btn color="primary" variant="elevated" @click="handleSaveProduct">
-            {{ editingProduct ? 'Update' : 'Create' }}
+          <v-btn variant="outlined" @click="productDialog.close">Cancel</v-btn>
+          <v-btn
+            color="primary"
+            variant="elevated"
+            :loading="productDialog.isSubmitting.value"
+            @click="productDialog.submit"
+          >
+            {{ productDialog.isEditing.value ? 'Update' : 'Create' }}
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
     <!-- User Reserve Dialog -->
-    <v-dialog v-if="userType === 'user'" v-model="showReserveDialog" max-width="500px">
+    <v-dialog v-if="userType === 'user'" v-model="reservationDialog.isOpen.value" max-width="500px">
       <v-card>
         <v-card-title>Reserve Product</v-card-title>
         <v-card-text>
@@ -839,7 +825,7 @@ const handleSettingsClick = () => {
             </div>
 
             <v-text-field
-              v-model.number="reserveForm.quantity"
+              v-model.number="reservationDialog.formData.value.quantity"
               label="Quantity"
               type="number"
               variant="outlined"
@@ -849,7 +835,9 @@ const handleSettingsClick = () => {
             ></v-text-field>
 
             <v-alert type="info" variant="tonal" class="mt-4">
-              Total: ₱{{ (selectedProduct.price * reserveForm.quantity).toFixed(2) }}
+              Total: ₱{{
+                (selectedProduct.price * reservationDialog.formData.value.quantity).toFixed(2)
+              }}
             </v-alert>
 
             <v-alert type="warning" variant="tonal" class="mt-2">
@@ -860,8 +848,13 @@ const handleSettingsClick = () => {
 
         <v-card-actions class="px-6 pb-6">
           <v-spacer></v-spacer>
-          <v-btn variant="outlined" @click="showReserveDialog = false">Cancel</v-btn>
-          <v-btn color="primary" variant="elevated" @click="submitReservation">
+          <v-btn variant="outlined" @click="reservationDialog.close">Cancel</v-btn>
+          <v-btn
+            color="primary"
+            variant="elevated"
+            :loading="reservationDialog.isSubmitting.value"
+            @click="reservationDialog.submit"
+          >
             Confirm Reservation
           </v-btn>
         </v-card-actions>
@@ -869,28 +862,22 @@ const handleSettingsClick = () => {
     </v-dialog>
 
     <!-- Delete Confirmation Dialog -->
-    <v-dialog v-model="showDeleteDialog" max-width="400px">
-      <v-card>
-        <v-card-title>Confirm Delete</v-card-title>
-        <v-card-text>
-          Are you sure you want to delete this {{ deleteTarget?.type }}? This action cannot be
-          undone.
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn variant="outlined" @click="showDeleteDialog = false">Cancel</v-btn>
-          <v-btn color="error" variant="elevated" @click="handleDelete">Delete</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <DeleteConfirmDialog
+      v-model="deleteConfirmation.isOpen.value"
+      :is-deleting="deleteConfirmation.isDeleting.value"
+      title="Confirm Delete"
+      :message="`Are you sure you want to delete this ${deleteConfirmation.itemToDelete.value?.type || 'item'}`"
+      @confirm="deleteConfirmation.confirmDelete"
+    />
 
     <!-- Snackbar for notifications -->
-    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
-      {{ snackbarMessage }}
-      <template v-slot:actions>
-        <v-btn variant="text" @click="snackbar = false">Close</v-btn>
-      </template>
-    </v-snackbar>
+    <AppSnackbar
+      v-model="snackbar"
+      :message="snackbarMessage"
+      :color="snackbarColor"
+      :timeout="3000"
+      location="top"
+    />
   </div>
 </template>
 
