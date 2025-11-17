@@ -256,14 +256,6 @@ const isFormValid = computed(() => {
       </v-col>
     </v-row>
 
-    <!-- Loading State -->
-    <v-row v-if="loading && announcements.length === 0">
-      <v-col cols="12" class="text-center py-12">
-        <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
-        <p class="text-h6 mt-4">Loading announcements...</p>
-      </v-col>
-    </v-row>
-
     <!-- Error State -->
     <v-alert v-if="error" type="error" class="mb-6" closable>
       {{ error }}
@@ -271,6 +263,13 @@ const isFormValid = computed(() => {
 
     <!-- User View: Card Layout -->
     <template v-if="userType === 'user'">
+      <!-- Loading State -->
+      <v-row v-if="loading && announcements.length === 0">
+        <v-col cols="12" class="text-center py-12">
+          <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
+          <p class="text-h6 mt-4">Loading announcements...</p>
+        </v-col>
+      </v-row>
       <!-- Empty State for Users -->
       <v-row v-if="!loading && announcements.length === 0">
         <v-col cols="12" class="text-center py-12">
@@ -381,93 +380,100 @@ const isFormValid = computed(() => {
 
             <v-divider></v-divider>
 
-            <!-- Empty State for Admin -->
-            <div v-if="!loading && announcements.length === 0" class="text-center py-12">
-              <v-icon size="80" color="grey-lighten-1">mdi-bullhorn-outline</v-icon>
-              <p class="text-h6 mt-4">No announcements yet</p>
-              <p class="text-body-1 text-grey mb-4">
-                {{
-                  searchQuery
-                    ? 'No results found. Try adjusting your search.'
-                    : 'Get started by creating your first announcement!'
-                }}
-              </p>
-              <v-btn
-                v-if="searchQuery"
-                color="primary"
-                variant="outlined"
-                @click="handleClearSearch"
-              >
-                Clear Search
-              </v-btn>
-              <v-btn
-                v-else
-                color="primary"
-                variant="elevated"
-                prepend-icon="mdi-plus"
-                @click="handleAddAnnouncement"
-              >
-                Create First Announcement
-              </v-btn>
-            </div>
+            <v-card-text>
+              <!-- Loading State -->
+              <div v-if="loading" class="text-center py-12">
+                <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
+                <p class="text-h6 text-grey-darken-1 mt-4">Loading announcements...</p>
+              </div>
 
-            <!-- Data Table -->
-            <v-data-table
-              v-else
-              :headers="tableHeaders"
-              :items="announcements"
-              :loading="loading"
-              hide-default-footer
-              class="elevation-0"
-            >
-              <template #item.image_url="{ item }">
-                <v-avatar v-if="item.image_url" size="60" rounded="lg" class="my-2">
-                  <v-img :src="item.image_url" cover></v-img>
-                </v-avatar>
-                <v-avatar v-else size="60" rounded="lg" color="grey-lighten-3" class="my-2">
-                  <v-icon color="grey">mdi-bullhorn</v-icon>
-                </v-avatar>
-              </template>
-
-              <template #item.title="{ item }">
-                <div>
-                  <div class="font-weight-medium">{{ item.title }}</div>
-                  <div class="text-caption text-grey">
-                    {{ item.description.substring(0, 60) }}...
-                  </div>
-                </div>
-              </template>
-
-              <template #item.duration="{ item }">
-                <v-chip size="small" color="primary" variant="tonal">
-                  <v-icon start size="small">mdi-clock-outline</v-icon>
-                  {{ item.duration }}
-                </v-chip>
-              </template>
-
-              <template #item.created_at="{ item }">
-                {{ formatDate(item.created_at) }}
-              </template>
-
-              <template #item.actions="{ item }">
+              <!-- Empty State for Admin -->
+              <div v-else-if="announcements.length === 0" class="text-center py-12">
+                <v-icon size="80" color="grey-lighten-1">mdi-bullhorn-outline</v-icon>
+                <p class="text-h6 mt-4">No announcements yet</p>
+                <p class="text-body-1 text-grey mb-4">
+                  {{
+                    searchQuery
+                      ? 'No results found. Try adjusting your search.'
+                      : 'Get started by creating your first announcement!'
+                  }}
+                </p>
                 <v-btn
-                  icon="mdi-pencil"
-                  size="small"
-                  variant="text"
+                  v-if="searchQuery"
                   color="primary"
-                  @click="handleEditAnnouncement(item)"
-                ></v-btn>
+                  variant="outlined"
+                  @click="handleClearSearch"
+                >
+                  Clear Search
+                </v-btn>
                 <v-btn
-                  icon="mdi-delete"
-                  size="small"
-                  variant="text"
-                  color="error"
-                  @click="confirmDelete(item.id)"
-                ></v-btn>
-              </template>
+                  v-else
+                  color="primary"
+                  variant="elevated"
+                  prepend-icon="mdi-plus"
+                  @click="handleAddAnnouncement"
+                >
+                  Create First Announcement
+                </v-btn>
+              </div>
 
-              <template #bottom></template>
-            </v-data-table>
+              <!-- Data Table -->
+              <v-data-table
+                v-else
+                :headers="tableHeaders"
+                :items="announcements"
+                hide-default-footer
+                class="elevation-0"
+              >
+                <template #item.image_url="{ item }">
+                  <v-avatar v-if="item.image_url" size="60" rounded="lg" class="my-2">
+                    <v-img :src="item.image_url" cover></v-img>
+                  </v-avatar>
+                  <v-avatar v-else size="60" rounded="lg" color="grey-lighten-3" class="my-2">
+                    <v-icon color="grey">mdi-bullhorn</v-icon>
+                  </v-avatar>
+                </template>
+
+                <template #item.title="{ item }">
+                  <div>
+                    <div class="font-weight-medium">{{ item.title }}</div>
+                    <div class="text-caption text-grey">
+                      {{ item.description.substring(0, 60) }}...
+                    </div>
+                  </div>
+                </template>
+
+                <template #item.duration="{ item }">
+                  <v-chip size="small" color="primary" variant="tonal">
+                    <v-icon start size="small">mdi-clock-outline</v-icon>
+                    {{ item.duration }}
+                  </v-chip>
+                </template>
+
+                <template #item.created_at="{ item }">
+                  {{ formatDate(item.created_at) }}
+                </template>
+
+                <template #item.actions="{ item }">
+                  <v-btn
+                    icon="mdi-pencil"
+                    size="small"
+                    variant="text"
+                    color="primary"
+                    @click="handleEditAnnouncement(item)"
+                  ></v-btn>
+                  <v-btn
+                    icon="mdi-delete"
+                    size="small"
+                    variant="text"
+                    color="error"
+                    @click="confirmDelete(item.id)"
+                  ></v-btn>
+                </template>
+
+                <template #bottom></template>
+              </v-data-table>
+            </v-card-text>
           </v-card>
         </v-col>
       </v-row>
