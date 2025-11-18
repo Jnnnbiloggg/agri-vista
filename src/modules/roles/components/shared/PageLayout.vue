@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject, type Ref } from 'vue'
 import HeaderActions from './HeaderActions.vue'
+import DrawerToggle from '@/components/shared/DrawerToggle.vue'
 
 interface Props {
   title: string
@@ -11,6 +12,9 @@ interface Props {
   searchPlaceholder?: string
   userType?: 'admin' | 'user'
 }
+
+// Inject drawer state from layout
+const drawer = inject<Ref<boolean>>('drawer')
 
 const props = withDefaults(defineProps<Props>(), {
   showSearch: true,
@@ -43,21 +47,59 @@ const handleSettingsClick = () => {
   <div class="page-layout">
     <!-- Page Header -->
     <div class="page-header">
-      <v-row align="center" justify="space-between" class="mb-md">
-        <v-col cols="12" md="auto">
-          <h1 class="page-title">{{ title }}</h1>
-          <p class="page-subtitle">{{ subtitle }}</p>
-        </v-col>
-        <v-col cols="12" md="auto" class="d-flex justify-end">
-          <HeaderActions
-            :search-placeholder="searchPlaceholder"
-            :show-search="showSearch"
-            :show-notifications="showNotifications"
-            :show-settings="showSettings"
-            :user-type="userType"
-            @search="handleSearch"
-            @settings-click="handleSettingsClick"
-          />
+      <v-row class="mb-md">
+        <v-col cols="12">
+          <!-- Mobile Layout -->
+          <div class="d-md-none">
+            <!-- Top Row: DrawerToggle + HeaderActions -->
+            <div class="d-flex align-center justify-space-between mb-4">
+              <DrawerToggle v-if="drawer !== undefined" v-model:drawer="drawer" />
+              <HeaderActions
+                :search-placeholder="searchPlaceholder"
+                :user-type="userType"
+                :show-search="false"
+                :show-notifications="showNotifications"
+                :show-settings="showSettings"
+                @search="handleSearch"
+                @settings-click="handleSettingsClick"
+              />
+            </div>
+            <!-- Title and Subtitle -->
+            <div class="mb-4">
+              <h1 class="text-h5 font-weight-bold text-primary mb-2">{{ title }}</h1>
+              <p class="text-body-1 text-grey-darken-1">{{ subtitle }}</p>
+            </div>
+            <!-- Search Bar (Full Width) - Only show if search is enabled -->
+            <HeaderActions
+              v-if="showSearch"
+              :search-placeholder="searchPlaceholder"
+              :user-type="userType"
+              :show-notifications="false"
+              :show-settings="false"
+              @search="handleSearch"
+              @settings-click="handleSettingsClick"
+            />
+          </div>
+
+          <!-- Desktop Layout -->
+          <div class="d-none d-md-flex align-center justify-space-between">
+            <div class="d-flex align-start">
+              <DrawerToggle v-if="drawer !== undefined" v-model:drawer="drawer" />
+              <div>
+                <h1 class="page-title text-h4 font-weight-bold text-primary mb-2">{{ title }}</h1>
+                <p class="page-subtitle text-h6 text-grey-darken-1">{{ subtitle }}</p>
+              </div>
+            </div>
+            <HeaderActions
+              :search-placeholder="searchPlaceholder"
+              :user-type="userType"
+              :show-search="showSearch"
+              :show-notifications="showNotifications"
+              :show-settings="showSettings"
+              @search="handleSearch"
+              @settings-click="handleSettingsClick"
+            />
+          </div>
         </v-col>
       </v-row>
     </div>

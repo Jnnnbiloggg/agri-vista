@@ -1,7 +1,7 @@
 <!-- src/modules/roles/components/Announcements.vue -->
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject, type Ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useAnnouncements } from '../composables/useAnnouncements'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
@@ -11,7 +11,7 @@ import { useDeleteConfirmation } from '@/composables/useDeleteConfirmation'
 import { useFormDialog } from '@/composables/useFormDialog'
 import { usePageActions } from '@/composables/usePageActions'
 import { formatDate } from '@/utils/formatters'
-import HeaderActions from './shared/HeaderActions.vue'
+import PageHeader from './shared/PageHeader.vue'
 import AppSnackbar from '@/components/shared/AppSnackbar.vue'
 import DeleteConfirmDialog from '@/components/shared/DeleteConfirmDialog.vue'
 
@@ -20,6 +20,8 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+
+const drawer = inject<Ref<boolean>>('drawer')
 
 // Get user info from auth store
 const authStore = useAuthStore()
@@ -240,21 +242,14 @@ const isFormValid = computed(() => {
 <template>
   <div>
     <!-- Page Header -->
-    <v-row class="mb-6">
-      <v-col cols="12" class="d-flex align-center justify-space-between">
-        <div>
-          <h1 class="text-h4 font-weight-bold text-primary mb-2">{{ pageTitle }}</h1>
-          <p class="text-h6 text-grey-darken-1">{{ pageSubtitle }}</p>
-        </div>
-
-        <HeaderActions
-          search-placeholder="Search announcements..."
-          :user-type="userType"
-          @search="handleSearch"
-          @settings-click="handleSettingsClick"
-        />
-      </v-col>
-    </v-row>
+    <PageHeader
+      :title="pageTitle"
+      :subtitle="pageSubtitle"
+      :user-type="userType"
+      search-placeholder="Search announcements..."
+      @search="handleSearch"
+      @settings-click="handleSettingsClick"
+    />
 
     <!-- Error State -->
     <v-alert v-if="error" type="error" class="mb-6" closable>
@@ -355,26 +350,60 @@ const isFormValid = computed(() => {
       <v-row>
         <v-col cols="12">
           <v-card>
-            <v-card-title class="d-flex justify-space-between align-center pa-6">
-              <div class="d-flex align-center gap-4">
-                <span class="text-h6">All Announcements</span>
-                <v-chip v-if="totalCount > 0" color="primary" size="small"
-                  >{{ totalCount }} total</v-chip
-                >
+            <v-card-title class="pa-4 pa-md-6">
+              <!-- Mobile Layout -->
+              <div class="d-md-none">
+                <div class="d-flex align-center justify-space-between mb-3">
+                  <div class="d-flex align-center gap-2">
+                    <span class="text-h6">All Announcements</span>
+                    <v-chip v-if="totalCount > 0" color="primary" size="small">{{
+                      totalCount
+                    }}</v-chip>
+                  </div>
+                </div>
+                <div class="d-flex flex-column gap-2">
+                  <v-btn
+                    color="primary"
+                    prepend-icon="mdi-plus"
+                    block
+                    @click="handleAddAnnouncement"
+                  >
+                    Add Announcement
+                  </v-btn>
+                  <v-pagination
+                    v-if="announcements.length > 0"
+                    v-model="currentPage"
+                    :length="totalPages"
+                    :total-visible="3"
+                    size="small"
+                    rounded="circle"
+                    @update:model-value="goToPage"
+                  ></v-pagination>
+                </div>
               </div>
-              <div class="d-flex align-center gap-2">
-                <v-pagination
-                  v-if="announcements.length > 0"
-                  v-model="currentPage"
-                  :length="totalPages"
-                  :total-visible="5"
-                  size="small"
-                  rounded="circle"
-                  @update:model-value="goToPage"
-                ></v-pagination>
-                <v-btn color="primary" prepend-icon="mdi-plus" @click="handleAddAnnouncement">
-                  Add Announcement
-                </v-btn>
+
+              <!-- Desktop Layout -->
+              <div class="d-none d-md-flex justify-space-between align-center">
+                <div class="d-flex align-center gap-4">
+                  <span class="text-h6">All Announcements</span>
+                  <v-chip v-if="totalCount > 0" color="primary" size="small"
+                    >{{ totalCount }} total</v-chip
+                  >
+                </div>
+                <div class="d-flex align-center gap-2">
+                  <v-pagination
+                    v-if="announcements.length > 0"
+                    v-model="currentPage"
+                    :length="totalPages"
+                    :total-visible="5"
+                    size="small"
+                    rounded="circle"
+                    @update:model-value="goToPage"
+                  ></v-pagination>
+                  <v-btn color="primary" prepend-icon="mdi-plus" @click="handleAddAnnouncement">
+                    Add Announcement
+                  </v-btn>
+                </div>
               </div>
             </v-card-title>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, inject, type Ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedback } from '../composables/useFeedback'
 import { useProducts } from '../composables/useProducts'
@@ -11,12 +11,16 @@ import AppSnackbar from '@/components/shared/AppSnackbar.vue'
 import DeleteConfirmDialog from '@/components/shared/DeleteConfirmDialog.vue'
 import { useDeleteConfirmation } from '@/composables/useDeleteConfirmation'
 import { usePageActions } from '@/composables/usePageActions'
+import DrawerToggle from '@/components/shared/DrawerToggle.vue'
+import PageHeader from './shared/PageHeader.vue'
 
 interface Props {
   userType: 'admin' | 'user'
 }
 
 const props = defineProps<Props>()
+
+const drawer = inject<Ref<boolean>>('drawer')
 
 // Get user info from auth store
 const authStore = useAuthStore()
@@ -256,22 +260,14 @@ const pageSubtitle = computed(() =>
 <template>
   <div>
     <!-- Page Header -->
-    <v-row class="mb-6">
-      <v-col cols="12" class="d-flex align-center justify-space-between">
-        <div>
-          <h1 class="text-h4 font-weight-bold text-primary mb-2">{{ pageTitle }}</h1>
-          <p class="text-h6 text-grey-darken-1">{{ pageSubtitle }}</p>
-        </div>
-
-        <HeaderActions
-          search-placeholder="Search feedback..."
-          :user-type="userType"
-          @search="handleSearch"
-          @clear-search="handleClearSearch"
-          @settings-click="handleSettingsClick"
-        />
-      </v-col>
-    </v-row>
+    <PageHeader
+      :title="pageTitle"
+      :subtitle="pageSubtitle"
+      :user-type="userType"
+      search-placeholder="Search activities..."
+      @search="handleSearch"
+      @settings-click="handleSettingsClick"
+    />
 
     <!-- Loading State -->
     <v-row v-if="loading && feedbacks.length === 0" class="mb-6">

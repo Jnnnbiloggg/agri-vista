@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject, type Ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useActivities } from '../composables/useActivities'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
@@ -10,7 +10,7 @@ import { useFormDialog } from '@/composables/useFormDialog'
 import { usePageActions } from '@/composables/usePageActions'
 import { formatDate, formatTime } from '@/utils/formatters'
 import { getStatusColor } from '@/utils/statusHelpers'
-import HeaderActions from './shared/HeaderActions.vue'
+import PageHeader from './shared/PageHeader.vue'
 import AppSnackbar from '@/components/shared/AppSnackbar.vue'
 import DeleteConfirmDialog from '@/components/shared/DeleteConfirmDialog.vue'
 
@@ -19,6 +19,8 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+
+const drawer = inject<Ref<boolean>>('drawer')
 
 // Get user info from auth store
 const authStore = useAuthStore()
@@ -302,6 +304,16 @@ const confirmDelete = (type: 'activity' | 'booking' | 'appointment', id: number)
   deleteConfirmation.openDialog({ type, id })
 }
 
+const pageTitle = computed(() =>
+  props.userType === 'admin' ? 'Activities & Bookings Management' : 'Farm Activities',
+)
+
+const pageSubtitle = computed(() =>
+  props.userType === 'admin'
+    ? 'Manage farm activities, bookings, and appointments'
+    : 'Explore and book farm activities',
+)
+
 const updateBookingStatus = async (
   bookingId: number,
   status: 'pending' | 'confirmed' | 'cancelled',
@@ -406,33 +418,19 @@ const appointmentHeaders = [
   { title: 'Status', key: 'status' },
   { title: 'Actions', key: 'actions' },
 ]
-
-const pageSubtitle = computed(() =>
-  props.userType === 'admin'
-    ? 'Manage farm activities, bookings, and appointments'
-    : 'Explore and book farm activities',
-)
 </script>
 
 <template>
   <div>
     <!-- Page Header -->
-    <v-row class="mb-6">
-      <v-col cols="12" class="d-flex align-center justify-space-between">
-        <div>
-          <h1 class="text-h4 font-weight-bold text-primary mb-2">
-            {{ userType === 'admin' ? 'Activities & Bookings Management' : 'Farm Activities' }}
-          </h1>
-          <p class="text-h6 text-grey-darken-1">{{ pageSubtitle }}</p>
-        </div>
-        <HeaderActions
-          search-placeholder="Search announcements..."
-          :user-type="userType"
-          @search="handleSearch"
-          @settings-click="handleSettingsClick"
-        />
-      </v-col>
-    </v-row>
+    <PageHeader
+      :title="pageTitle"
+      :subtitle="pageSubtitle"
+      :user-type="userType"
+      search-placeholder="Search activities..."
+      @search="handleSearch"
+      @settings-click="handleSettingsClick"
+    />
 
     <!-- User View -->
     <template v-if="userType === 'user'">
@@ -554,26 +552,60 @@ const pageSubtitle = computed(() =>
           <v-row>
             <v-col cols="12">
               <v-card>
-                <v-card-title class="d-flex justify-space-between align-center pa-6">
-                  <div class="d-flex align-center gap-4">
-                    <span class="text-h6">All Farm Activities</span>
-                    <v-chip v-if="activitiesTotal > 0" color="primary" size="small"
-                      >{{ activitiesTotal }} total</v-chip
-                    >
+                <v-card-title class="pa-4 pa-md-6">
+                  <!-- Mobile Layout -->
+                  <div class="d-md-none">
+                    <div class="d-flex align-center justify-space-between mb-3">
+                      <div class="d-flex align-center gap-2">
+                        <span class="text-h6">All Farm Activities</span>
+                        <v-chip v-if="activitiesTotal > 0" color="primary" size="small">{{
+                          activitiesTotal
+                        }}</v-chip>
+                      </div>
+                    </div>
+                    <div class="d-flex flex-column gap-2">
+                      <v-btn
+                        color="primary"
+                        prepend-icon="mdi-plus"
+                        block
+                        @click="handleAddActivity"
+                      >
+                        Add Activity
+                      </v-btn>
+                      <v-pagination
+                        v-if="activities.length > 0"
+                        v-model="activitiesPage"
+                        :length="activitiesTotalPages"
+                        :total-visible="3"
+                        size="small"
+                        rounded="circle"
+                        @update:model-value="goToActivitiesPage"
+                      ></v-pagination>
+                    </div>
                   </div>
-                  <div class="d-flex align-center gap-2">
-                    <v-pagination
-                      v-if="activities.length > 0"
-                      v-model="activitiesPage"
-                      :length="activitiesTotalPages"
-                      :total-visible="5"
-                      size="small"
-                      rounded="circle"
-                      @update:model-value="goToActivitiesPage"
-                    ></v-pagination>
-                    <v-btn color="primary" prepend-icon="mdi-plus" @click="handleAddActivity">
-                      Add Activity
-                    </v-btn>
+
+                  <!-- Desktop Layout -->
+                  <div class="d-none d-md-flex justify-space-between align-center">
+                    <div class="d-flex align-center gap-4">
+                      <span class="text-h6">All Farm Activities</span>
+                      <v-chip v-if="activitiesTotal > 0" color="primary" size="small"
+                        >{{ activitiesTotal }} total</v-chip
+                      >
+                    </div>
+                    <div class="d-flex align-center gap-2">
+                      <v-pagination
+                        v-if="activities.length > 0"
+                        v-model="activitiesPage"
+                        :length="activitiesTotalPages"
+                        :total-visible="5"
+                        size="small"
+                        rounded="circle"
+                        @update:model-value="goToActivitiesPage"
+                      ></v-pagination>
+                      <v-btn color="primary" prepend-icon="mdi-plus" @click="handleAddActivity">
+                        Add Activity
+                      </v-btn>
+                    </div>
                   </div>
                 </v-card-title>
                 <v-card-text>
@@ -652,31 +684,66 @@ const pageSubtitle = computed(() =>
           <v-row>
             <v-col cols="12">
               <v-card>
-                <v-card-title class="d-flex justify-space-between align-center pa-6">
-                  <div class="d-flex align-center gap-4">
-                    <span class="text-h6">Activity Bookings</span>
-                    <v-chip v-if="bookingsTotal > 0" color="primary" size="small"
-                      >{{ bookingsTotal }} total</v-chip
-                    >
+                <v-card-title class="pa-4 pa-md-6">
+                  <!-- Mobile Layout -->
+                  <div class="d-md-none">
+                    <div class="d-flex align-center justify-space-between mb-3">
+                      <div class="d-flex align-center gap-2">
+                        <span class="text-h6">Activity Bookings</span>
+                        <v-chip v-if="bookingsTotal > 0" color="primary" size="small">{{
+                          bookingsTotal
+                        }}</v-chip>
+                      </div>
+                    </div>
+                    <div class="d-flex flex-column gap-2">
+                      <v-btn
+                        color="success"
+                        variant="elevated"
+                        prepend-icon="mdi-download"
+                        block
+                        @click="downloadBookings"
+                      >
+                        View All Bookings
+                      </v-btn>
+                      <v-pagination
+                        v-if="bookings.length > 0"
+                        v-model="bookingsPage"
+                        :length="bookingsTotalPages"
+                        :total-visible="3"
+                        size="small"
+                        rounded="circle"
+                        @update:model-value="goToBookingsPage"
+                      ></v-pagination>
+                    </div>
                   </div>
-                  <div class="d-flex align-center gap-2">
-                    <v-pagination
-                      v-if="bookings.length > 0"
-                      v-model="bookingsPage"
-                      :length="bookingsTotalPages"
-                      :total-visible="5"
-                      size="small"
-                      rounded="circle"
-                      @update:model-value="goToBookingsPage"
-                    ></v-pagination>
-                    <v-btn
-                      color="success"
-                      variant="elevated"
-                      prepend-icon="mdi-download"
-                      @click="downloadBookings"
-                    >
-                      View All Bookings
-                    </v-btn>
+
+                  <!-- Desktop Layout -->
+                  <div class="d-none d-md-flex justify-space-between align-center">
+                    <div class="d-flex align-center gap-4">
+                      <span class="text-h6">Activity Bookings</span>
+                      <v-chip v-if="bookingsTotal > 0" color="primary" size="small"
+                        >{{ bookingsTotal }} total</v-chip
+                      >
+                    </div>
+                    <div class="d-flex align-center gap-2">
+                      <v-pagination
+                        v-if="bookings.length > 0"
+                        v-model="bookingsPage"
+                        :length="bookingsTotalPages"
+                        :total-visible="5"
+                        size="small"
+                        rounded="circle"
+                        @update:model-value="goToBookingsPage"
+                      ></v-pagination>
+                      <v-btn
+                        color="success"
+                        variant="elevated"
+                        prepend-icon="mdi-download"
+                        @click="downloadBookings"
+                      >
+                        View All Bookings
+                      </v-btn>
+                    </div>
                   </div>
                 </v-card-title>
                 <v-card-text>
@@ -751,31 +818,66 @@ const pageSubtitle = computed(() =>
           <v-row>
             <v-col cols="12">
               <v-card>
-                <v-card-title class="d-flex justify-space-between align-center pa-6">
-                  <div class="d-flex align-center gap-4">
-                    <span class="text-h6">User Appointments</span>
-                    <v-chip v-if="appointmentsTotal > 0" color="primary" size="small"
-                      >{{ appointmentsTotal }} total</v-chip
-                    >
+                <v-card-title class="pa-4 pa-md-6">
+                  <!-- Mobile Layout -->
+                  <div class="d-md-none">
+                    <div class="d-flex align-center justify-space-between mb-3">
+                      <div class="d-flex align-center gap-2">
+                        <span class="text-h6">User Appointments</span>
+                        <v-chip v-if="appointmentsTotal > 0" color="primary" size="small">{{
+                          appointmentsTotal
+                        }}</v-chip>
+                      </div>
+                    </div>
+                    <div class="d-flex flex-column gap-2">
+                      <v-btn
+                        color="success"
+                        variant="elevated"
+                        prepend-icon="mdi-download"
+                        block
+                        @click="downloadAppointments"
+                      >
+                        View All Appointments
+                      </v-btn>
+                      <v-pagination
+                        v-if="appointments.length > 0"
+                        v-model="appointmentsPage"
+                        :length="appointmentsTotalPages"
+                        :total-visible="3"
+                        size="small"
+                        rounded="circle"
+                        @update:model-value="goToAppointmentsPage"
+                      ></v-pagination>
+                    </div>
                   </div>
-                  <div class="d-flex align-center gap-2">
-                    <v-pagination
-                      v-if="appointments.length > 0"
-                      v-model="appointmentsPage"
-                      :length="appointmentsTotalPages"
-                      :total-visible="5"
-                      size="small"
-                      rounded="circle"
-                      @update:model-value="goToAppointmentsPage"
-                    ></v-pagination>
-                    <v-btn
-                      color="success"
-                      variant="elevated"
-                      prepend-icon="mdi-download"
-                      @click="downloadAppointments"
-                    >
-                      View All Appointments
-                    </v-btn>
+
+                  <!-- Desktop Layout -->
+                  <div class="d-none d-md-flex justify-space-between align-center">
+                    <div class="d-flex align-center gap-4">
+                      <span class="text-h6">User Appointments</span>
+                      <v-chip v-if="appointmentsTotal > 0" color="primary" size="small"
+                        >{{ appointmentsTotal }} total</v-chip
+                      >
+                    </div>
+                    <div class="d-flex align-center gap-2">
+                      <v-pagination
+                        v-if="appointments.length > 0"
+                        v-model="appointmentsPage"
+                        :length="appointmentsTotalPages"
+                        :total-visible="5"
+                        size="small"
+                        rounded="circle"
+                        @update:model-value="goToAppointmentsPage"
+                      ></v-pagination>
+                      <v-btn
+                        color="success"
+                        variant="elevated"
+                        prepend-icon="mdi-download"
+                        @click="downloadAppointments"
+                      >
+                        View All Appointments
+                      </v-btn>
+                    </div>
                   </div>
                 </v-card-title>
                 <v-card-text>

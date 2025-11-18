@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const drawer = ref(true)
+
+// Provide drawer state to child components
+provide('drawer', drawer)
 
 const userNavigationItems = [
   {
@@ -135,7 +138,7 @@ const handleLogout = () => {
 }
 
 :deep(.v-main .v-container) {
-  height: calc(100vh - 64px);
+  height: calc(100vh - 48px);
   overflow-y: auto;
   overflow-x: hidden;
 }

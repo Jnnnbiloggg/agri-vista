@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject, type Ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useProducts } from '../composables/useProducts'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
@@ -12,12 +12,16 @@ import { formatDate } from '@/utils/formatters'
 import HeaderActions from './shared/HeaderActions.vue'
 import AppSnackbar from '@/components/shared/AppSnackbar.vue'
 import DeleteConfirmDialog from '@/components/shared/DeleteConfirmDialog.vue'
+import DrawerToggle from '@/components/shared/DrawerToggle.vue'
+import PageHeader from './shared/PageHeader.vue'
 
 interface Props {
   userType: 'admin' | 'user'
 }
 
 const props = defineProps<Props>()
+
+const drawer = inject<Ref<boolean>>('drawer')
 
 // Get user info from auth store
 const authStore = useAuthStore()
@@ -268,6 +272,16 @@ const confirmDelete = (type: 'product' | 'order', id: number) => {
   deleteConfirmation.openDialog({ type, id })
 }
 
+const pageTitle = computed(() =>
+  props.userType === 'admin' ? 'Product Management' : 'Farm Products',
+)
+
+const pageSubtitle = computed(() =>
+  props.userType === 'admin'
+    ? 'Manage products and orders'
+    : 'Browse and reserve fresh farm products',
+)
+
 const updateOrderStatus = async (
   orderId: number,
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled',
@@ -346,36 +360,19 @@ const productHeaders = [
   { title: 'Stock', key: 'stock' },
   { title: 'Actions', key: 'actions' },
 ]
-
-const pageSubtitle = computed(() =>
-  props.userType === 'admin'
-    ? 'Manage products and orders'
-    : 'Browse and reserve fresh farm products',
-)
 </script>
 
 <template>
   <div>
     <!-- Page Header -->
-    <v-row class="mb-6">
-      <v-col cols="12" class="d-flex align-center justify-space-between">
-        <div>
-          <h1 class="text-h4 font-weight-bold text-primary mb-2">
-            {{ userType === 'admin' ? 'Product Management' : 'Farm Products' }}
-          </h1>
-          <p class="text-h6 text-grey-darken-1">
-            {{ pageSubtitle }}
-          </p>
-        </div>
-
-        <HeaderActions
-          search-placeholder="Search products..."
-          :user-type="userType"
-          @search="handleSearch"
-          @settings-click="handleSettingsClick"
-        />
-      </v-col>
-    </v-row>
+    <PageHeader
+      :title="pageTitle"
+      :subtitle="pageSubtitle"
+      :user-type="userType"
+      search-placeholder="Search activities..."
+      @search="handleSearch"
+      @settings-click="handleSettingsClick"
+    />
 
     <!-- Admin View -->
     <template v-if="userType === 'admin'">
@@ -390,31 +387,66 @@ const pageSubtitle = computed(() =>
           <v-row>
             <v-col cols="12">
               <v-card>
-                <v-card-title class="d-flex justify-space-between align-center pa-6">
-                  <div class="d-flex align-center gap-4">
-                    <span class="text-h6">Product Inventory</span>
-                    <v-chip v-if="productsTotal > 0" color="primary" size="small"
-                      >{{ productsTotal }} total</v-chip
-                    >
+                <v-card-title class="pa-4 pa-md-6">
+                  <!-- Mobile Layout -->
+                  <div class="d-md-none">
+                    <div class="d-flex align-center justify-space-between mb-3">
+                      <div class="d-flex align-center gap-2">
+                        <span class="text-h6">Product Inventory</span>
+                        <v-chip v-if="productsTotal > 0" color="primary" size="small">{{
+                          productsTotal
+                        }}</v-chip>
+                      </div>
+                    </div>
+                    <div class="d-flex flex-column gap-2">
+                      <v-btn
+                        color="primary"
+                        variant="elevated"
+                        prepend-icon="mdi-plus"
+                        block
+                        @click="handleAddProduct"
+                      >
+                        Add Product
+                      </v-btn>
+                      <v-pagination
+                        v-if="products.length > 0"
+                        v-model="productsPage"
+                        :length="productsTotalPages"
+                        :total-visible="3"
+                        size="small"
+                        rounded="circle"
+                        @update:model-value="goToProductsPage"
+                      ></v-pagination>
+                    </div>
                   </div>
-                  <div class="d-flex align-center gap-2">
-                    <v-pagination
-                      v-if="products.length > 0"
-                      v-model="productsPage"
-                      :length="productsTotalPages"
-                      :total-visible="5"
-                      size="small"
-                      rounded="circle"
-                      @update:model-value="goToProductsPage"
-                    ></v-pagination>
-                    <v-btn
-                      color="primary"
-                      variant="elevated"
-                      prepend-icon="mdi-plus"
-                      @click="handleAddProduct"
-                    >
-                      Add Product
-                    </v-btn>
+
+                  <!-- Desktop Layout -->
+                  <div class="d-none d-md-flex justify-space-between align-center">
+                    <div class="d-flex align-center gap-4">
+                      <span class="text-h6">Product Inventory</span>
+                      <v-chip v-if="productsTotal > 0" color="primary" size="small"
+                        >{{ productsTotal }} total</v-chip
+                      >
+                    </div>
+                    <div class="d-flex align-center gap-2">
+                      <v-pagination
+                        v-if="products.length > 0"
+                        v-model="productsPage"
+                        :length="productsTotalPages"
+                        :total-visible="5"
+                        size="small"
+                        rounded="circle"
+                        @update:model-value="goToProductsPage"
+                      ></v-pagination>
+                      <v-btn
+                        color="primary"
+                        variant="elevated"
+                        prepend-icon="mdi-plus"
+                        @click="handleAddProduct"
+                      >
+                        Add Product
+                      </v-btn>
+                    </div>
                   </div>
                 </v-card-title>
                 <v-card-text>
@@ -512,31 +544,66 @@ const pageSubtitle = computed(() =>
           <v-row>
             <v-col cols="12">
               <v-card>
-                <v-card-title class="d-flex justify-space-between align-center pa-6">
-                  <div class="d-flex align-center gap-4">
-                    <span class="text-h6">Order History</span>
-                    <v-chip v-if="ordersTotal > 0" color="primary" size="small"
-                      >{{ ordersTotal }} total</v-chip
-                    >
+                <v-card-title class="pa-4 pa-md-6">
+                  <!-- Mobile Layout -->
+                  <div class="d-md-none">
+                    <div class="d-flex align-center justify-space-between mb-3">
+                      <div class="d-flex align-center gap-2">
+                        <span class="text-h6">Order History</span>
+                        <v-chip v-if="ordersTotal > 0" color="primary" size="small">{{
+                          ordersTotal
+                        }}</v-chip>
+                      </div>
+                    </div>
+                    <div class="d-flex flex-column gap-2">
+                      <v-btn
+                        color="success"
+                        variant="elevated"
+                        prepend-icon="mdi-download"
+                        block
+                        @click="downloadSalesHistory"
+                      >
+                        View Full Sales History
+                      </v-btn>
+                      <v-pagination
+                        v-if="orders.length > 0"
+                        v-model="ordersPage"
+                        :length="ordersTotalPages"
+                        :total-visible="3"
+                        size="small"
+                        rounded="circle"
+                        @update:model-value="goToOrdersPage"
+                      ></v-pagination>
+                    </div>
                   </div>
-                  <div class="d-flex align-center gap-2">
-                    <v-pagination
-                      v-if="orders.length > 0"
-                      v-model="ordersPage"
-                      :length="ordersTotalPages"
-                      :total-visible="5"
-                      size="small"
-                      rounded="circle"
-                      @update:model-value="goToOrdersPage"
-                    ></v-pagination>
-                    <v-btn
-                      color="success"
-                      variant="elevated"
-                      prepend-icon="mdi-download"
-                      @click="downloadSalesHistory"
-                    >
-                      View Full Sales History
-                    </v-btn>
+
+                  <!-- Desktop Layout -->
+                  <div class="d-none d-md-flex justify-space-between align-center">
+                    <div class="d-flex align-center gap-4">
+                      <span class="text-h6">Order History</span>
+                      <v-chip v-if="ordersTotal > 0" color="primary" size="small"
+                        >{{ ordersTotal }} total</v-chip
+                      >
+                    </div>
+                    <div class="d-flex align-center gap-2">
+                      <v-pagination
+                        v-if="orders.length > 0"
+                        v-model="ordersPage"
+                        :length="ordersTotalPages"
+                        :total-visible="5"
+                        size="small"
+                        rounded="circle"
+                        @update:model-value="goToOrdersPage"
+                      ></v-pagination>
+                      <v-btn
+                        color="success"
+                        variant="elevated"
+                        prepend-icon="mdi-download"
+                        @click="downloadSalesHistory"
+                      >
+                        View Full Sales History
+                      </v-btn>
+                    </div>
                   </div>
                 </v-card-title>
                 <v-card-text>

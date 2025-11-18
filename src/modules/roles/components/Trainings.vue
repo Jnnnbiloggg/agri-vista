@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject, type Ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTrainings } from '../composables/useTrainings'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
@@ -12,12 +12,16 @@ import { useImageHandler } from '@/composables/useImageHandler'
 import { useDeleteConfirmation } from '@/composables/useDeleteConfirmation'
 import { usePageActions } from '@/composables/usePageActions'
 import { formatDate } from '@/utils/formatters'
+import DrawerToggle from '@/components/shared/DrawerToggle.vue'
+import PageHeader from './shared/PageHeader.vue'
 
 interface Props {
   userType: 'admin' | 'user'
 }
 
 const props = defineProps<Props>()
+
+const drawer = inject<Ref<boolean>>('drawer')
 
 // Get user info from auth store
 const authStore = useAuthStore()
@@ -306,6 +310,16 @@ const confirmDelete = (type: 'training' | 'registration', id: number) => {
   deleteConfirmation.openDialog({ type, id })
 }
 
+const pageTitle = computed(() =>
+  props.userType === 'admin' ? 'Training Management' : 'Trainings & Workshops',
+)
+
+const pageSubtitle = computed(() =>
+  props.userType === 'admin'
+    ? 'Manage training sessions and registrations'
+    : 'Browse and register for upcoming trainings',
+)
+
 const updateRegistrationStatus = async (
   registrationId: number,
   status: 'pending' | 'confirmed' | 'cancelled',
@@ -401,12 +415,6 @@ const registrationHeaders = [
   { title: 'Actions', key: 'actions' },
 ]
 
-const pageSubtitle = computed(() =>
-  props.userType === 'admin'
-    ? 'Manage training sessions and registrations'
-    : 'Browse and register for upcoming trainings',
-)
-
 // Check if user has already registered for a training
 const getUserRegistration = (trainingId: number) => {
   return registrations.value.find(
@@ -431,25 +439,14 @@ const getRegistrationStatusText = (status: string) => {
 <template>
   <div>
     <!-- Page Header -->
-    <v-row class="mb-6">
-      <v-col cols="12" class="d-flex align-center justify-space-between">
-        <div>
-          <h1 class="text-h4 font-weight-bold text-primary mb-2">
-            {{ userType === 'admin' ? 'Training Management' : 'Trainings & Workshops' }}
-          </h1>
-          <p class="text-h6 text-grey-darken-1">
-            {{ pageSubtitle }}
-          </p>
-        </div>
-
-        <HeaderActions
-          search-placeholder="Search trainings..."
-          :user-type="userType"
-          @search="handleSearch"
-          @settings-click="handleSettingsClick"
-        />
-      </v-col>
-    </v-row>
+    <PageHeader
+      :title="pageTitle"
+      :subtitle="pageSubtitle"
+      :user-type="userType"
+      search-placeholder="Search activities..."
+      @search="handleSearch"
+      @settings-click="handleSettingsClick"
+    />
 
     <!-- Admin View -->
     <template v-if="userType === 'admin'">
@@ -464,31 +461,66 @@ const getRegistrationStatusText = (status: string) => {
           <v-row>
             <v-col cols="12">
               <v-card>
-                <v-card-title class="d-flex justify-space-between align-center pa-6">
-                  <div class="d-flex align-center gap-4">
-                    <span class="text-h6">Training Sessions</span>
-                    <v-chip v-if="trainingsTotal > 0" color="primary" size="small"
-                      >{{ trainingsTotal }} total</v-chip
-                    >
+                <v-card-title class="pa-4 pa-md-6">
+                  <!-- Mobile Layout -->
+                  <div class="d-md-none">
+                    <div class="d-flex align-center justify-space-between mb-3">
+                      <div class="d-flex align-center gap-2">
+                        <span class="text-h6">Training Sessions</span>
+                        <v-chip v-if="trainingsTotal > 0" color="primary" size="small">{{
+                          trainingsTotal
+                        }}</v-chip>
+                      </div>
+                    </div>
+                    <div class="d-flex flex-column gap-2">
+                      <v-btn
+                        color="primary"
+                        variant="elevated"
+                        prepend-icon="mdi-plus"
+                        block
+                        @click="handleAddTraining"
+                      >
+                        Add Training
+                      </v-btn>
+                      <v-pagination
+                        v-if="trainings.length > 0"
+                        v-model="trainingsPage"
+                        :length="trainingsTotalPages"
+                        :total-visible="3"
+                        size="small"
+                        rounded="circle"
+                        @update:model-value="goToTrainingsPage"
+                      ></v-pagination>
+                    </div>
                   </div>
-                  <div class="d-flex align-center gap-2">
-                    <v-pagination
-                      v-if="trainings.length > 0"
-                      v-model="trainingsPage"
-                      :length="trainingsTotalPages"
-                      :total-visible="5"
-                      size="small"
-                      rounded="circle"
-                      @update:model-value="goToTrainingsPage"
-                    ></v-pagination>
-                    <v-btn
-                      color="primary"
-                      variant="elevated"
-                      prepend-icon="mdi-plus"
-                      @click="handleAddTraining"
-                    >
-                      Add Training
-                    </v-btn>
+
+                  <!-- Desktop Layout -->
+                  <div class="d-none d-md-flex justify-space-between align-center">
+                    <div class="d-flex align-center gap-4">
+                      <span class="text-h6">Training Sessions</span>
+                      <v-chip v-if="trainingsTotal > 0" color="primary" size="small"
+                        >{{ trainingsTotal }} total</v-chip
+                      >
+                    </div>
+                    <div class="d-flex align-center gap-2">
+                      <v-pagination
+                        v-if="trainings.length > 0"
+                        v-model="trainingsPage"
+                        :length="trainingsTotalPages"
+                        :total-visible="5"
+                        size="small"
+                        rounded="circle"
+                        @update:model-value="goToTrainingsPage"
+                      ></v-pagination>
+                      <v-btn
+                        color="primary"
+                        variant="elevated"
+                        prepend-icon="mdi-plus"
+                        @click="handleAddTraining"
+                      >
+                        Add Training
+                      </v-btn>
+                    </div>
                   </div>
                 </v-card-title>
                 <v-card-text>
@@ -589,31 +621,66 @@ const getRegistrationStatusText = (status: string) => {
           <v-row>
             <v-col cols="12">
               <v-card>
-                <v-card-title class="d-flex justify-space-between align-center pa-6">
-                  <div class="d-flex align-center gap-4">
-                    <span class="text-h6">Registration List</span>
-                    <v-chip v-if="registrationsTotal > 0" color="primary" size="small"
-                      >{{ registrationsTotal }} total</v-chip
-                    >
+                <v-card-title class="pa-4 pa-md-6">
+                  <!-- Mobile Layout -->
+                  <div class="d-md-none">
+                    <div class="d-flex align-center justify-space-between mb-3">
+                      <div class="d-flex align-center gap-2">
+                        <span class="text-h6">Registration List</span>
+                        <v-chip v-if="registrationsTotal > 0" color="primary" size="small">{{
+                          registrationsTotal
+                        }}</v-chip>
+                      </div>
+                    </div>
+                    <div class="d-flex flex-column gap-2">
+                      <v-btn
+                        color="success"
+                        variant="elevated"
+                        prepend-icon="mdi-download"
+                        block
+                        @click="downloadRegistrations"
+                      >
+                        Export Registrations
+                      </v-btn>
+                      <v-pagination
+                        v-if="registrations.length > 0"
+                        v-model="registrationsPage"
+                        :length="registrationsTotalPages"
+                        :total-visible="3"
+                        size="small"
+                        rounded="circle"
+                        @update:model-value="goToRegistrationsPage"
+                      ></v-pagination>
+                    </div>
                   </div>
-                  <div class="d-flex align-center gap-2">
-                    <v-pagination
-                      v-if="registrations.length > 0"
-                      v-model="registrationsPage"
-                      :length="registrationsTotalPages"
-                      :total-visible="5"
-                      size="small"
-                      rounded="circle"
-                      @update:model-value="goToRegistrationsPage"
-                    ></v-pagination>
-                    <v-btn
-                      color="success"
-                      variant="elevated"
-                      prepend-icon="mdi-download"
-                      @click="downloadRegistrations"
-                    >
-                      Export Registrations
-                    </v-btn>
+
+                  <!-- Desktop Layout -->
+                  <div class="d-none d-md-flex justify-space-between align-center">
+                    <div class="d-flex align-center gap-4">
+                      <span class="text-h6">Registration List</span>
+                      <v-chip v-if="registrationsTotal > 0" color="primary" size="small"
+                        >{{ registrationsTotal }} total</v-chip
+                      >
+                    </div>
+                    <div class="d-flex align-center gap-2">
+                      <v-pagination
+                        v-if="registrations.length > 0"
+                        v-model="registrationsPage"
+                        :length="registrationsTotalPages"
+                        :total-visible="5"
+                        size="small"
+                        rounded="circle"
+                        @update:model-value="goToRegistrationsPage"
+                      ></v-pagination>
+                      <v-btn
+                        color="success"
+                        variant="elevated"
+                        prepend-icon="mdi-download"
+                        @click="downloadRegistrations"
+                      >
+                        Export Registrations
+                      </v-btn>
+                    </div>
                   </div>
                 </v-card-title>
                 <v-card-text>

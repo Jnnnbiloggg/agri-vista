@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, inject, type Ref } from 'vue'
 import { useDashboard } from '../composables/useDashboard'
 import StatusBadge from './shared/StatusBadge.vue'
-import HeaderActions from './shared/HeaderActions.vue'
+import PageHeader from './shared/PageHeader.vue'
 import AppSnackbar from '@/components/shared/AppSnackbar.vue'
 import DeleteConfirmDialog from '@/components/shared/DeleteConfirmDialog.vue'
 import { useSnackbar } from '@/composables/useSnackbar'
@@ -17,6 +17,8 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+
+const drawer = inject<Ref<boolean>>('drawer')
 
 const {
   carouselSlides,
@@ -188,20 +190,13 @@ const resetMapView = () => {
 <template>
   <div class="dashboard-container">
     <!-- Page Header -->
-    <v-row class="mb-6">
-      <v-col cols="12" class="d-flex align-center justify-space-between">
-        <div>
-          <h1 class="text-h4 font-weight-bold text-primary mb-2">{{ pageTitle }}</h1>
-          <p class="text-h6 text-grey-darken-1">{{ pageSubtitle }}</p>
-        </div>
-
-        <HeaderActions
-          :show-search="false"
-          :user-type="userType"
-          @settings-click="handleSettingsClick"
-        />
-      </v-col>
-    </v-row>
+    <PageHeader
+      :title="pageTitle"
+      :subtitle="pageSubtitle"
+      :user-type="userType"
+      :show-search="false"
+      @settings-click="handleSettingsClick"
+    />
 
     <!-- Loading State -->
     <div v-if="loading && carouselSlides.length === 0" class="text-center py-12">
