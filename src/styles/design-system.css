@@ -434,6 +434,26 @@
   padding-bottom: var(--spacing-xl) !important;
 }
 
+/* Gap utilities (used across components like Activities.vue) */
+.gap-1 {
+  gap: 4px !important;
+}
+.gap-2 {
+  gap: 8px !important;
+}
+.gap-3 {
+  gap: 12px !important;
+}
+.gap-4 {
+  gap: 16px !important;
+}
+.gap-6 {
+  gap: 24px !important;
+}
+.gap-8 {
+  gap: 32px !important;
+}
+
 .mb-sm {
   margin-bottom: var(--spacing-sm) !important;
 }

@@ -434,6 +434,15 @@ const getRegistrationStatusText = (status: string) => {
       return 'Register Now'
   }
 }
+
+const isTrainingCompleted = (training: any | null) => {
+  if (!training) return false
+  try {
+    return new Date(training.end_date_time) < new Date()
+  } catch (e) {
+    return false
+  }
+}
 </script>
 
 <template>
@@ -496,7 +505,7 @@ const getRegistrationStatusText = (status: string) => {
 
                   <!-- Desktop Layout -->
                   <div class="d-none d-md-flex justify-space-between align-center">
-                    <div class="d-flex align-center gap-4">
+                    <div class="d-flex align-center gap-2">
                       <span class="text-h6">Training Sessions</span>
                       <v-chip v-if="trainingsTotal > 0" color="primary" size="small"
                         >{{ trainingsTotal }} total</v-chip
@@ -656,7 +665,7 @@ const getRegistrationStatusText = (status: string) => {
 
                   <!-- Desktop Layout -->
                   <div class="d-none d-md-flex justify-space-between align-center">
-                    <div class="d-flex align-center gap-4">
+                    <div class="d-flex align-center gap-2">
                       <span class="text-h6">Registration List</span>
                       <v-chip v-if="registrationsTotal > 0" color="primary" size="small"
                         >{{ registrationsTotal }} total</v-chip
@@ -798,20 +807,23 @@ const getRegistrationStatusText = (status: string) => {
       <!-- Training Cards -->
       <v-row v-else>
         <v-col v-for="training in filteredTrainings" :key="training.id" cols="12" sm="6" md="4">
-          <v-card class="fill-height">
+          <v-card
+            class="fill-height training-card"
+            @click="!isTrainingCompleted(training) && openRegisterDialog(training)"
+            @keydown.enter="!isTrainingCompleted(training) && openRegisterDialog(training)"
+            role="button"
+            :tabindex="isTrainingCompleted(training) ? -1 : 0"
+            :class="{ 'disabled-training': isTrainingCompleted(training) }"
+          >
             <v-img v-if="training.image_url" :src="training.image_url" height="200" cover></v-img>
-            <div
-              v-else
-              class="bg-grey-lighten-3 d-flex align-center justify-center"
-              style="height: 200px"
-            >
+            <div v-else class="bg-grey-lighten-3 d-flex align-center justify-center default-image">
               <v-icon icon="mdi-school-outline" size="64" color="grey-lighten-1"></v-icon>
             </div>
 
             <v-card-title class="text-h6">{{ training.name }}</v-card-title>
 
             <v-card-text>
-              <div v-if="training.description" class="text-body-2 mb-3">
+              <div v-if="training.description" class="text-body-2 mb-3 training-description">
                 {{ training.description }}
               </div>
 
@@ -872,15 +884,6 @@ const getRegistrationStatusText = (status: string) => {
                   {{ getRegistrationStatusText(getUserRegistration(training.id)!.status) }}
                 </v-chip>
               </template>
-              <v-btn
-                v-else
-                color="primary"
-                variant="elevated"
-                block
-                @click="openRegisterDialog(training)"
-              >
-                Register Now
-              </v-btn>
             </v-card-actions>
           </v-card>
         </v-col>
@@ -1083,8 +1086,13 @@ const getRegistrationStatusText = (status: string) => {
         <v-card-actions class="px-6 pb-6">
           <v-spacer></v-spacer>
           <v-btn variant="outlined" @click="showRegisterDialog = false">Cancel</v-btn>
-          <v-btn color="primary" variant="elevated" @click="confirmRegistration">
-            Confirm Registration
+          <v-btn
+            color="primary"
+            variant="elevated"
+            :disabled="selectedTraining && isTrainingCompleted(selectedTraining)"
+            @click="confirmRegistration"
+          >
+            Register
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -1114,5 +1122,90 @@ const getRegistrationStatusText = (status: string) => {
 <style scoped>
 .gap-2 {
   gap: 8px;
+}
+
+.training-description {
+  display: -webkit-box;
+  line-clamp: 3;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Ensure images have consistent height and are cropped uniformly so cards align */
+.training-card > .v-img,
+.training-card .v-img,
+.training-card > .default-image {
+  height: 200px;
+  min-height: 200px;
+  max-height: 200px;
+  flex-shrink: 0;
+}
+
+.training-card .v-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Make the card layout a column and grow the text area so footer stays at the bottom */
+.training-card {
+  display: flex;
+  flex-direction: column;
+  /* desktop baseline; lowered so cards don't appear overly tall */
+  min-height: 420px;
+}
+
+.training-card .v-card-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+
+/* Limit title height to two lines so it doesn't push content unexpectedly */
+.training-card .v-card-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 48px;
+}
+
+.disabled-training {
+  opacity: 0.65;
+  cursor: default;
+}
+
+/* Responsive adjustments: slightly smaller cards on narrower screens */
+@media (max-width: 960px) {
+  .training-card {
+    min-height: 400px;
+  }
+
+  .training-card > .v-img,
+  .training-card .v-img,
+  .training-card > .default-image {
+    height: 180px;
+    min-height: 180px;
+    max-height: 180px;
+  }
+}
+
+@media (max-width: 600px) {
+  .training-card {
+    min-height: 340px;
+  }
+
+  .training-card > .v-img,
+  .training-card .v-img,
+  .training-card > .default-image {
+    height: 140px;
+    min-height: 140px;
+    max-height: 140px;
+  }
 }
 </style>

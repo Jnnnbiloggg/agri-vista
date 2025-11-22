@@ -454,7 +454,7 @@ const pageSubtitle = computed(() =>
           <v-col cols="12">
             <v-card>
               <v-card-title class="d-flex justify-space-between align-center">
-                <div class="d-flex align-center gap-4">
+                <div class="d-flex align-center gap-2">
                   <span>All Feedback Submissions</span>
                   <v-chip v-if="feedbacksTotal > 0" color="primary" size="small"
                     >{{ feedbacksTotal }} total</v-chip

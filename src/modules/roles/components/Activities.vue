@@ -256,13 +256,9 @@ const activityDialog = useFormDialog<{
   onSubmit: async (data, isEditing): Promise<{ success: boolean; error?: string }> => {
     let result
     if (isEditing && data.id) {
-      result = await updateActivity(
-        data.id,
-        { ...data, image_url: imagePreview.value },
-        imageFile.value,
-      )
+      result = await updateActivity(data.id, { ...data }, imageFile.value)
     } else {
-      result = await createActivity({ ...data, image_url: imagePreview.value }, imageFile.value)
+      result = await createActivity({ ...data, image_url: data.image_url ?? null }, imageFile.value)
     }
     return {
       success: result.success,
@@ -474,7 +470,7 @@ const appointmentHeaders = [
       <!-- Activities Cards -->
       <v-row v-else>
         <v-col v-for="activity in activities" :key="activity.id" cols="12" md="6" lg="4">
-          <v-card class="fill-height">
+          <v-card class="fill-height activity-card">
             <v-img
               :src="
                 activity.image_url ||
@@ -487,20 +483,22 @@ const appointmentHeaders = [
             <v-card-title>{{ activity.name }}</v-card-title>
 
             <v-card-text>
-              <p class="text-body-2 mb-3">{{ activity.description }}</p>
+              <p class="text-body-2 mb-3 activity-description">{{ activity.description }}</p>
 
-              <div class="mb-2">
-                <v-chip color="primary" size="small" variant="tonal" class="mr-2">
-                  {{ activity.type }}
-                </v-chip>
-                <v-chip color="info" size="small" variant="tonal">
-                  <v-icon icon="mdi-map-marker" size="small" class="mr-1"></v-icon>
-                  {{ activity.location }}
-                </v-chip>
-              </div>
+              <div class="activity-chips">
+                <div class="chips-row">
+                  <v-chip color="primary" size="small" variant="tonal" class="mr-2">
+                    {{ activity.type }}
+                  </v-chip>
+                  <v-chip color="info" size="small" variant="tonal">
+                    <v-icon icon="mdi-map-marker" size="small" class="mr-1"></v-icon>
+                    {{ activity.location }}
+                  </v-chip>
+                </div>
 
-              <div class="text-caption text-grey-darken-1">
-                Capacity: {{ activity.capacity }} participants
+                <div class="text-caption text-grey-darken-1 capacity">
+                  Capacity: {{ activity.capacity }} participants
+                </div>
               </div>
             </v-card-text>
 
@@ -586,7 +584,7 @@ const appointmentHeaders = [
 
                   <!-- Desktop Layout -->
                   <div class="d-none d-md-flex justify-space-between align-center">
-                    <div class="d-flex align-center gap-4">
+                    <div class="d-flex align-center gap-2">
                       <span class="text-h6">All Farm Activities</span>
                       <v-chip v-if="activitiesTotal > 0" color="primary" size="small"
                         >{{ activitiesTotal }} total</v-chip
@@ -719,7 +717,7 @@ const appointmentHeaders = [
 
                   <!-- Desktop Layout -->
                   <div class="d-none d-md-flex justify-space-between align-center">
-                    <div class="d-flex align-center gap-4">
+                    <div class="d-flex align-center gap-2">
                       <span class="text-h6">Activity Bookings</span>
                       <v-chip v-if="bookingsTotal > 0" color="primary" size="small"
                         >{{ bookingsTotal }} total</v-chip
@@ -853,7 +851,7 @@ const appointmentHeaders = [
 
                   <!-- Desktop Layout -->
                   <div class="d-none d-md-flex justify-space-between align-center">
-                    <div class="d-flex align-center gap-4">
+                    <div class="d-flex align-center gap-2">
                       <span class="text-h6">User Appointments</span>
                       <v-chip v-if="appointmentsTotal > 0" color="primary" size="small"
                         >{{ appointmentsTotal }} total</v-chip
@@ -1220,4 +1218,59 @@ const appointmentHeaders = [
 
 <style scoped>
 /* Component specific styles */
+.activity-description {
+  display: -webkit-box;
+  line-clamp: 3;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Make activity card content stretch and push chips to bottom for alignment */
+.activity-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-card .v-card-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+
+.activity-chips {
+  margin-top: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.activity-chips .capacity {
+  color: var(--v-theme-on-surface, #495057);
+}
+
+/* Ensure images have consistent height and are cropped uniformly so cards align */
+.activity-card > .v-img,
+.activity-card .v-img {
+  height: 200px;
+  min-height: 200px;
+  max-height: 200px;
+  flex-shrink: 0;
+}
+
+/* Make sure the underlying img fills the v-img container and uses cover */
+.activity-card .v-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Stabilize overall card heights so footer chips align across cards with varying content */
+.activity-card {
+  min-height: 420px;
+}
 </style>

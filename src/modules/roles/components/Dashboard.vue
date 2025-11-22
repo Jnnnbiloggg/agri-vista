@@ -211,7 +211,7 @@ const resetMapView = () => {
 
     <!-- Main Dashboard Content -->
     <v-row v-if="!loading || carouselSlides.length > 0">
-      <!-- Left Column: Carousel -->
+      <!-- Left Column: Carousel and Map -->
       <v-col cols="12" md="6">
         <v-row>
           <v-col cols="12">
@@ -247,7 +247,7 @@ const resetMapView = () => {
                         <div class="carousel-overlay">
                           <div class="carousel-content">
                             <h2 class="text-h4 font-weight-bold mb-2">{{ slide.title }}</h2>
-                            <p class="text-body-1">{{ slide.description }}</p>
+                            <p class="text-body-1 mb-3">{{ slide.description }}</p>
 
                             <!-- Admin Actions on Slide -->
                             <div v-if="userType === 'admin'" class="mt-4">
@@ -370,7 +370,7 @@ const resetMapView = () => {
         </v-row>
       </v-col>
 
-      <!-- Right Column: Map and Activities -->
+      <!-- Right Column: Activities -->
       <v-col cols="12" md="6">
         <v-row>
           <!-- Farm Activities -->

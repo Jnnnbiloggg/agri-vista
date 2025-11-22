@@ -1,15 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-
-interface Notification {
-  id: number
-  title: string
-  message: string
-  time: string
-  read: boolean
-  type: 'info' | 'success' | 'warning' | 'error'
-}
+import { useNotifications } from '@/composables/useNotifications'
 
 interface Props {
   searchPlaceholder?: string
@@ -38,6 +30,34 @@ const searchQuery = ref('')
 const showNotificationMenu = ref(false)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
+// Use the notification composable
+const {
+  notifications,
+  unreadCount,
+  loading,
+  unreadNotifications,
+  readNotifications,
+  fetchNotifications,
+  markAsRead,
+  markAllAsRead,
+  deleteNotification,
+  clearReadNotifications,
+  setupRealtimeSubscription,
+  cleanupRealtimeSubscription,
+  getNotificationIcon,
+  getNotificationColor,
+  timeAgo,
+} = useNotifications()
+
+onMounted(async () => {
+  await fetchNotifications()
+  setupRealtimeSubscription()
+})
+
+onUnmounted(() => {
+  cleanupRealtimeSubscription()
+})
+
 // Debounced search watcher
 watch(searchQuery, (newValue) => {
   if (debounceTimer) {
@@ -49,80 +69,24 @@ watch(searchQuery, (newValue) => {
   }, 300) // 300ms debounce delay
 })
 
-// Sample notifications data
-const notifications = ref<Notification[]>([
-  {
-    id: 1,
-    title: 'New Booking',
-    message: 'Maria Santos booked Strawberry Picking',
-    time: '5 min ago',
-    read: false,
-    type: 'success',
-  },
-  {
-    id: 2,
-    title: 'Appointment Request',
-    message: 'John Doe requested a farm tour',
-    time: '1 hour ago',
-    read: false,
-    type: 'info',
-  },
-  {
-    id: 3,
-    title: 'Activity Updated',
-    message: 'Organic Workshop capacity increased',
-    time: '3 hours ago',
-    read: true,
-    type: 'info',
-  },
-])
-
-const unreadCount = computed(() => notifications.value.filter((n) => !n.read).length)
-
-const markAsRead = (id: number) => {
-  const notification = notifications.value.find((n) => n.id === id)
-  if (notification) {
-    notification.read = true
+const handleNotificationClick = async (notification: any) => {
+  // Mark as read
+  if (!notification.is_read) {
+    await markAsRead(notification.id)
   }
-}
 
-const markAllAsRead = () => {
-  notifications.value.forEach((n) => (n.read = true))
-}
-
-const clearNotifications = () => {
-  notifications.value = []
+  // Navigate to route if available
+  if (notification.route) {
+    showNotificationMenu.value = false
+    router.push(notification.route)
+  }
 }
 
 const handleSettingsClick = () => {
   router.push(`/${props.userType}/settings`)
 }
 
-const getNotificationIcon = (type: Notification['type']) => {
-  switch (type) {
-    case 'success':
-      return 'mdi-check-circle'
-    case 'warning':
-      return 'mdi-alert'
-    case 'error':
-      return 'mdi-alert-circle'
-    default:
-      return 'mdi-information'
-  }
-}
-
-const getNotificationColor = (type: Notification['type']) => {
-  switch (type) {
-    case 'success':
-      return 'success'
-    case 'warning':
-      return 'warning'
-    case 'error':
-      return 'error'
-    default:
-      return 'info'
-  }
-}
+const displayedNotifications = computed(() => notifications.value)
 </script>
 
 <template>
@@ -163,7 +127,7 @@ const getNotificationColor = (type: Notification['type']) => {
         <v-card-title class="d-flex align-center justify-space-between">
           <span>Notifications</span>
           <v-btn
-            v-if="notifications.length > 0"
+            v-if="unreadCount > 0"
             variant="text"
             size="small"
             color="primary"
@@ -176,32 +140,58 @@ const getNotificationColor = (type: Notification['type']) => {
         <v-divider></v-divider>
 
         <v-list
-          v-if="notifications.length > 0"
+          v-if="displayedNotifications.length > 0"
           class="pa-0"
           max-height="400"
           style="overflow-y: auto"
         >
           <v-list-item
-            v-for="notification in notifications"
+            v-for="notification in displayedNotifications"
             :key="notification.id"
-            :class="{ 'bg-blue-lighten-5': !notification.read }"
-            @click="markAsRead(notification.id)"
+            :class="{ 'notification-unread': !notification.is_read }"
+            @click="handleNotificationClick(notification)"
           >
             <template v-slot:prepend>
-              <v-avatar :color="getNotificationColor(notification.type)" variant="tonal">
-                <v-icon :icon="getNotificationIcon(notification.type)"></v-icon>
+              <v-avatar :color="getNotificationColor(notification.type)" size="40">
+                <v-icon color="white" :icon="getNotificationIcon(notification.type)"></v-icon>
               </v-avatar>
             </template>
 
-            <v-list-item-title class="font-weight-medium mb-1">
+            <v-list-item-title class="font-weight-medium mb-1 text-wrap">
               {{ notification.title }}
             </v-list-item-title>
             <v-list-item-subtitle class="text-wrap mb-1">
               {{ notification.message }}
             </v-list-item-subtitle>
             <v-list-item-subtitle class="text-caption">
-              {{ notification.time }}
+              {{ timeAgo(notification.created_at) }}
             </v-list-item-subtitle>
+
+            <template v-slot:append>
+              <v-menu>
+                <template v-slot:activator="{ props: menuItemProps }">
+                  <v-btn icon variant="text" size="small" v-bind="menuItemProps" @click.stop>
+                    <v-icon size="20">mdi-dots-vertical</v-icon>
+                  </v-btn>
+                </template>
+
+                <v-list density="compact">
+                  <v-list-item v-if="!notification.is_read" @click="markAsRead(notification.id)">
+                    <v-list-item-title>
+                      <v-icon size="16" class="mr-2">mdi-check</v-icon>
+                      Mark as read
+                    </v-list-item-title>
+                  </v-list-item>
+
+                  <v-list-item @click="deleteNotification(notification.id)">
+                    <v-list-item-title class="text-error">
+                      <v-icon size="16" class="mr-2">mdi-delete</v-icon>
+                      Delete
+                    </v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
+            </template>
           </v-list-item>
         </v-list>
 
@@ -215,11 +205,11 @@ const getNotificationColor = (type: Notification['type']) => {
           <p class="text-grey-darken-1">No notifications</p>
         </div>
 
-        <v-divider v-if="notifications.length > 0"></v-divider>
+        <v-divider v-if="displayedNotifications.length > 0"></v-divider>
 
-        <v-card-actions v-if="notifications.length > 0">
-          <v-btn variant="text" color="error" size="small" block @click="clearNotifications">
-            Clear all
+        <v-card-actions v-if="displayedNotifications.length > 0">
+          <v-btn variant="text" color="error" size="small" block @click="clearReadNotifications">
+            Clear read
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -267,7 +257,11 @@ const getNotificationColor = (type: Notification['type']) => {
   background-color: rgba(76, 175, 80, 0.04) !important;
 }
 
-:deep(.bg-blue-lighten-5) {
-  background-color: rgba(33, 150, 243, 0.08) !important;
+.notification-unread {
+  background-color: rgba(76, 175, 80, 0.08) !important;
+}
+
+.notification-unread:hover {
+  background-color: rgba(76, 175, 80, 0.12) !important;
 }
 </style>

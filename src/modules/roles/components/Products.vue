@@ -422,7 +422,7 @@ const productHeaders = [
 
                   <!-- Desktop Layout -->
                   <div class="d-none d-md-flex justify-space-between align-center">
-                    <div class="d-flex align-center gap-4">
+                    <div class="d-flex align-center gap-2">
                       <span class="text-h6">Product Inventory</span>
                       <v-chip v-if="productsTotal > 0" color="primary" size="small"
                         >{{ productsTotal }} total</v-chip
@@ -579,7 +579,7 @@ const productHeaders = [
 
                   <!-- Desktop Layout -->
                   <div class="d-none d-md-flex justify-space-between align-center">
-                    <div class="d-flex align-center gap-4">
+                    <div class="d-flex align-center gap-2">
                       <span class="text-h6">Order History</span>
                       <v-chip v-if="ordersTotal > 0" color="primary" size="small"
                         >{{ ordersTotal }} total</v-chip

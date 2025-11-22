@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useRouter } from 'vue-router'
+
 interface OfferCard {
   title: string
   subtitle: string
@@ -7,6 +9,24 @@ interface OfferCard {
   image: string
   buttonText: string
   action: () => void
+}
+
+const router = useRouter()
+
+function goToAnnouncements() {
+  router.push({ name: 'user-announcements' })
+}
+
+function goToActivities() {
+  router.push({ name: 'user-activities' })
+}
+
+function goToSchedule() {
+  router.push({ name: 'user-schedule' })
+}
+
+function goToPrograms() {
+  router.push({ name: 'user-programs' })
 }
 
 const offerCards: OfferCard[] = [
@@ -18,7 +38,7 @@ const offerCards: OfferCard[] = [
     icon: 'mdi-bullhorn',
     image: '/landing-page/offer-1.jpg',
     buttonText: 'VIEW ANNOUNCEMENTS',
-    action: () => console.log('Navigate to announcements'),
+    action: goToAnnouncements,
   },
   {
     title: 'Farm Activities',
@@ -28,7 +48,7 @@ const offerCards: OfferCard[] = [
     icon: 'mdi-leaf',
     image: '/landing-page/offer-2.jpg',
     buttonText: 'JOIN AN ACTIVITY',
-    action: () => console.log('Navigate to farm activities'),
+    action: goToActivities,
   },
   {
     title: 'Set an Appointment',
@@ -38,7 +58,7 @@ const offerCards: OfferCard[] = [
     icon: 'mdi-calendar-check',
     image: '/landing-page/offer-3.png',
     buttonText: 'SCHEDULE NOW',
-    action: () => console.log('Navigate to appointments'),
+    action: goToSchedule,
   },
   {
     title: 'Community Extension',
@@ -48,7 +68,7 @@ const offerCards: OfferCard[] = [
     icon: 'mdi-account-group',
     image: '/landing-page/offer-4.png',
     buttonText: 'SEE PROGRAMS',
-    action: () => console.log('Navigate to community programs'),
+    action: goToPrograms,
   },
 ]
 </script>

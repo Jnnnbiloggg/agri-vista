@@ -1,39 +1,30 @@
-# agri-vista
+# AgriVista
 
-This template should help get you started developing with Vue 3 in Vite.
+A simple admin + user web app for managing announcements, activities, products, trainings and feedback.
 
-## Recommended IDE Setup
+**Notifications**
 
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+- **Recipients:**: Notifications are delivered to authenticated users and to administrators. System-generated notifications include:
+  - announcements and product/training/activity updates for users who are signed in,
+  - new feedback, system alerts, and admin-only events for administrators.
+- **Instances:**: Notifications are surfaced in the app in two primary places:
+  - UI components: `src/components/shared/NotificationMenu.vue` (persistent list) and `src/components/shared/AppSnackbar.vue` (transient toasts).
+  - Backend / persistence: the notification records are stored in the `db/notifications.sql` schema and surfaced by the composable `src/composables/useNotifications.ts`.
 
-## Type Support for `.vue` Imports in TS
+**Database / SQL files**
 
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
+- **Location:**: `db/` contains SQL schema and seed helpers for local or dev imports.
+- **Files and purpose:**
+  - `db/activities.sql`: schema / seeds for activities module
+  - `db/announcements.sql`: schema / seeds for announcements
+  - `db/carousel.sql`: schema / seeds for homepage carousel items
+  - `db/feedbacks.sql`: schema / seeds for feedback messages submitted by users
+  - `db/notifications.sql`: schema / seeds for notification records used by the app
+  - `db/products.sql`: schema / seeds for product listings
+  - `db/trainings.sql`: schema / seeds for training events
 
-## Customize configuration
+**Where to look in the code**
 
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
-```sh
-npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
-npm run dev
-```
-
-### Type-Check, Compile and Minify for Production
-
-```sh
-npm run build
-```
-
-### Lint with [ESLint](https://eslint.org/)
-
-```sh
-npm run lint
-```
+- **Notification UI:**: `src/components/shared/NotificationMenu.vue` and `src/components/shared/AppSnackbar.vue`.
+- **Notification logic:**: `src/composables/useNotifications.ts` for fetching/managing notifications.
+- **Other related areas:**: modules under `src/modules/roles/` (components and composables) implement the per-module behavior for announcements, activities, products and trainings.

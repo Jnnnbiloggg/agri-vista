@@ -237,6 +237,20 @@ const isFormValid = computed(() => {
     durationUnit.value !== ''
   )
 })
+
+// Dialog state for showing full announcement to users
+const selectedAnnouncement = ref<any | null>(null)
+const showAnnouncementDialog = ref(false)
+
+const openAnnouncement = (announcement: any) => {
+  selectedAnnouncement.value = announcement
+  showAnnouncementDialog.value = true
+}
+
+const closeAnnouncementDialog = () => {
+  selectedAnnouncement.value = null
+  showAnnouncementDialog.value = false
+}
 </script>
 
 <template>
@@ -288,7 +302,13 @@ const isFormValid = computed(() => {
       <!-- User Cards -->
       <v-row v-else>
         <v-col v-for="announcement in announcements" :key="announcement.id" cols="12" md="6" lg="4">
-          <v-card class="fill-height">
+          <v-card
+            class="fill-height announcement-card"
+            @click="openAnnouncement(announcement)"
+            @keydown.enter="openAnnouncement(announcement)"
+            role="button"
+            tabindex="0"
+          >
             <v-img
               v-if="announcement.image_url"
               :src="announcement.image_url"
@@ -311,15 +331,20 @@ const isFormValid = computed(() => {
             </v-card-title>
 
             <v-card-text>
-              <p class="text-body-2 mb-3">{{ announcement.description }}</p>
-              <v-chip size="small" color="primary" variant="tonal" class="mr-2">
-                <v-icon start size="small">mdi-clock-outline</v-icon>
-                {{ announcement.duration }}
-              </v-chip>
-              <v-chip size="small" color="grey" variant="tonal">
-                <v-icon start size="small">mdi-calendar</v-icon>
-                {{ formatDate(announcement.created_at) }}
-              </v-chip>
+              <p class="text-body-2 mb-3 announcement-description">
+                {{ announcement.description }}
+              </p>
+
+              <div class="announcement-chips">
+                <v-chip size="small" color="primary" variant="tonal">
+                  <v-icon start size="small">mdi-clock-outline</v-icon>
+                  {{ announcement.duration }}
+                </v-chip>
+                <v-chip size="small" color="grey" variant="tonal">
+                  <v-icon start size="small">mdi-calendar</v-icon>
+                  {{ formatDate(announcement.created_at) }}
+                </v-chip>
+              </div>
             </v-card-text>
           </v-card>
         </v-col>
@@ -384,7 +409,7 @@ const isFormValid = computed(() => {
 
               <!-- Desktop Layout -->
               <div class="d-none d-md-flex justify-space-between align-center">
-                <div class="d-flex align-center gap-4">
+                <div class="d-flex align-center gap-2">
                   <span class="text-h6">All Announcements</span>
                   <v-chip v-if="totalCount > 0" color="primary" size="small"
                     >{{ totalCount }} total</v-chip
@@ -650,6 +675,46 @@ const isFormValid = computed(() => {
       @confirm="deleteConfirmation.confirmDelete"
     />
 
+    <!-- User: Full Announcement Dialog -->
+    <v-dialog
+      v-if="userType === 'user'"
+      v-model="showAnnouncementDialog"
+      width="800px"
+      max-height="800px"
+    >
+      <v-card>
+        <v-img
+          v-if="selectedAnnouncement && selectedAnnouncement.image_url"
+          :src="selectedAnnouncement.image_url"
+          height="300"
+          cover
+        ></v-img>
+
+        <v-card-title class="pa-4 text-h6 font-weight-bold">
+          {{ selectedAnnouncement?.title }}
+        </v-card-title>
+
+        <v-divider></v-divider>
+
+        <v-card-text class="pa-4">
+          <p class="mb-4">{{ selectedAnnouncement?.description }}</p>
+          <v-chip size="small" color="primary" variant="tonal" class="mr-2">
+            <v-icon start size="small">mdi-clock-outline</v-icon>
+            {{ selectedAnnouncement?.duration }}
+          </v-chip>
+          <v-chip size="small" color="grey" variant="tonal">
+            <v-icon start size="small">mdi-calendar</v-icon>
+            {{ formatDate(selectedAnnouncement?.created_at) }}
+          </v-chip>
+        </v-card-text>
+
+        <v-card-actions class="px-4 py-3">
+          <v-spacer></v-spacer>
+          <v-btn variant="tonal" @click="closeAnnouncementDialog">Close</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Snackbar for notifications -->
     <AppSnackbar
       v-model="snackbar"
@@ -680,5 +745,42 @@ const isFormValid = computed(() => {
 
 .v-data-table :deep(tbody tr:hover) {
   background-color: rgba(var(--v-theme-primary), 0.05);
+}
+
+.announcement-description {
+  display: -webkit-box;
+  line-clamp: 3;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.announcement-card {
+  cursor: pointer;
+}
+
+.announcement-card:focus-visible {
+  outline: 2px solid rgba(76, 175, 80, 0.35);
+  outline-offset: 3px;
+}
+
+/* Make card use column layout and push chips to the bottom so all cards align */
+.announcement-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.announcement-card .v-card-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+
+.announcement-chips {
+  margin-top: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 </style>
