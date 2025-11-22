@@ -142,9 +142,16 @@ const router = createRouter({
 
 // Navigation guard
 router.beforeEach((to, from, next) => {
+  // If the route does not require auth, allow immediately.
+  const requiresAuth = to.meta.requiresAuth
+  if (!requiresAuth) {
+    next()
+    return
+  }
+
+  // For routes that require authentication, wait for auth initialization if needed
   const authStore = useAuthStore()
 
-  // Wait for auth to initialize
   if (authStore.isLoading) {
     // If auth is still loading, wait for it
     const unwatch = authStore.$subscribe(() => {
@@ -158,18 +165,11 @@ router.beforeEach((to, from, next) => {
   }
 
   function checkAuth() {
-    const requiresAuth = to.meta.requiresAuth
     const requiresAdmin = to.meta.requiresAdmin
     const requiresUser = to.meta.requiresUser
 
-    // If route doesn't require auth, allow access
-    if (!requiresAuth) {
-      next()
-      return
-    }
-
     // If route requires auth and user is not authenticated
-    if (requiresAuth && !authStore.isAuthenticated) {
+    if (!authStore.isAuthenticated) {
       next({ name: 'account', query: { redirect: to.fullPath } })
       return
     }

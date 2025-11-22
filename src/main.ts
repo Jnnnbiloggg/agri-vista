@@ -21,8 +21,16 @@ app.use(router)
 app.use(vuetify)
 
 // Initialize authentication
+// Initialize authentication and mount app immediately
 const { initializeAuth, setupAuthListener } = useAuth()
-initializeAuth().then(() => {
-  setupAuthListener()
-  app.mount('#app')
+
+// Mount app immediately so public pages render without waiting for auth
+app.mount('#app')
+
+// Set up auth listener right away to handle auth changes
+setupAuthListener()
+
+// Initialize auth in background (don't block mounting)
+initializeAuth().catch((err) => {
+  console.error('Auth init failed:', err)
 })
