@@ -27,9 +27,9 @@
               creating a space where nature meets knowledge.
             </p>
           </div>
-          <v-btn size="large" color="white" variant="elevated" rounded="lg" class="px-6">
+       <!--   <v-btn size="large" color="white" variant="elevated" rounded="lg" class="px-6">
             Learn More
-          </v-btn>
+          </v-btn>  -->
         </v-col>
         <!-- Right Column - Images -->
         <v-col cols="12" md="6" class="pl-md-8">
